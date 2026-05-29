@@ -1,0 +1,8 @@
+# Discord ELO bot
+discord.py>=2.3,<3
+aiohttp>=3.9
+
+# SVG -> JPG card rendering. resvg-py is a self-contained, cross-platform wheel
+# (no system libraries needed); Pillow flattens it to JPG.
+resvg-py>=0.1
+pillow>=10.0
