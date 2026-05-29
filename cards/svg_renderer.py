@@ -9,7 +9,6 @@ import os
 import sys
 import math
 import asyncio
-import base64
 import html as _html
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,34 +16,22 @@ from config import FACTION_COLORS  # noqa: E402
 
 W = 1040
 
-# Common font paths on Linux containers; first match wins.
-_FONT_CANDIDATES = [
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+_FONT_DIR = os.path.dirname(__file__)
+_FONT_FILES = [
+    ("Crimson Pro",   "400", "normal", "CrimsonPro-Regular.ttf"),
+    ("Crimson Pro",   "700", "normal", "CrimsonPro-Bold.ttf"),
+    ("Crimson Pro",   "400", "italic", "CrimsonPro-Italic.ttf"),
+    ("Noto Color Emoji", "400", "normal", "NotoColorEmoji.ttf"),
 ]
-_FONT_FACE = ""
-
-
-def _load_font():
-    global _FONT_FACE
-    if _FONT_FACE:
-        return _FONT_FACE
-    for path in _FONT_CANDIDATES:
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode()
-            _FONT_FACE = (
-                f'<defs><style>@font-face{{font-family:"BotFont";'
-                f'src:url("data:font/truetype;base64,{b64}")}}</style></defs>'
-            )
-            return _FONT_FACE
-    return ""
-
-
-_FONT_FAMILY = "BotFont, Arial, sans-serif"
+# No fallback: if the font fails to load, text simply won't render.
+_FONT_FAMILY = "Crimson Pro"
+# IMPORTANT: emoji and text must NEVER share a <text> element (not even via <tspan>).
+# resvg resolves font-family once per <text> element; if any glyph in the element
+# triggers a fallback to _EMOJI_FAMILY, the whole element switches font and regular
+# Latin text ends up rendered in Twemoji Mozilla instead of Crimson Pro.
+# Fix: put emoji in their own <text font-family="_EMOJI_FAMILY"> elements, text in theirs.
+# fonts are loaded via font_files= in svg_to_bytes (resvg ignores @font-face data URIs).
+_EMOJI_FAMILY = "Noto Color Emoji"
 
 
 def _esc(s):
@@ -72,19 +59,26 @@ RANK_COLORS = {
     "Peasant": "#8a8a8a",
 }
 
-MEDAL_EMOJI = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+_FONT_PATHS = [
+    os.path.join(_FONT_DIR, fname)
+    for _, _, _, fname in _FONT_FILES
+    if os.path.exists(os.path.join(_FONT_DIR, fname))
+]
 
 
 def _rasterize_webp(svg: str, webp_path: str, scale: float = 2) -> bool:
-    """Rasterize SVG -> WebP, keeping the alpha channel. resvg (self-contained
-    wheel, cross-platform) renders to PNG bytes, then Pillow saves WebP — alpha
-    preserved, far smaller than PNG. True on success."""
+    """Rasterize SVG -> WebP via resvg. True on success."""
     try:
         import io
         import resvg_py
         from PIL import Image
 
-        png = bytes(resvg_py.svg_to_bytes(svg_string=svg, zoom=scale))
+        png = bytes(resvg_py.svg_to_bytes(
+            svg_string=svg, zoom=scale,
+            font_files=_FONT_PATHS,
+            font_family=_FONT_FAMILY,
+        ))
         img = Image.open(io.BytesIO(png)).convert("RGBA")
         img.save(webp_path, "WEBP", quality=92, method=6)
         return True
@@ -109,13 +103,15 @@ def render_header(out_path, title="Frax Arena Top12", scale=2):
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{h}" '
         f'font-family="{_FONT_FAMILY}">'
-        + _load_font()
         + _lux_bg()
         + f'<rect x="20" y="16" width="{W-40}" height="{h-32}" rx="22" '
           f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W*2}"/>'
-        + f'<text x="{W//2}" y="{h//2+20}" font-size="56" font-weight="900" '
-          f'fill="#ffd54f" stroke="#ffd54f" stroke-width="1.2" '
-          f'text-anchor="middle">🏆  {_esc(title)}  🏆</text>'
+        + f'<text x="{int(W*0.2)}" y="{h//2+18}" font-size="54" font-weight="700" font-family="{_EMOJI_FAMILY}" '
+          f'fill="#ffd54f" text-anchor="middle">🏆</text>'
+        + f'<text x="{W//2}" y="{h//2+13}" font-size="54" font-weight="700" '
+          f'fill="#ffd54f" text-anchor="middle">{_esc(title)}</text>'
+        + f'<text x="{int(W*0.8)}" y="{h//2+18}" font-size="54" font-weight="700" font-family="{_EMOJI_FAMILY}" '
+          f'fill="#ffd54f" text-anchor="middle">🏆</text>'
         + '</svg>'
     )
     return _save(svg, out_path, scale)
@@ -130,7 +126,7 @@ def render_rows(entries, out_path, scale=2):
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" '
         f'font-family="{_FONT_FAMILY}">',
-        _load_font(),
+
         _lux_bg(),
     ]
     pos_color = {1: "#ffd54f", 2: "#7fd6e8", 3: "#cd7f32"}
@@ -145,7 +141,7 @@ def render_rows(entries, out_path, scale=2):
             f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>'
         )
         parts.append(
-            f'<text x="72" y="{cy+12}" font-size="36" font-weight="800" '
+            f'<text x="72" y="{cy+12}" font-size="36" font-weight="700" '
             f'fill="{pc}" text-anchor="middle">#{pos}</text>'
         )
         cid = f"clip_{pos}"
@@ -160,32 +156,50 @@ def render_rows(entries, out_path, scale=2):
         name_x = 215
         name_col = pc if pos in pos_color else "#f2eefc"
         parts.append(
-            f'<text x="{name_x}" y="{cy-2}" font-size="30" font-weight="800" '
+            f'<text x="{name_x}" y="{cy-2}" font-size="30" font-weight="700" '
             f'fill="{name_col}">{_esc(e["name"])}</text>'
             f'<text x="{name_x}" y="{cy+26}" font-size="19" font-weight="700" '
             f'fill="{RANK_COLORS.get(e["rank"], "#9a90c0")}">{_esc(e["rank"])}</text>'
         )
-        medal = MEDAL_EMOJI.get(pos)
-        if medal:  # overlap the avatar's bottom-right corner; no layout shift
+        if pos in (1, 2, 3):
+            medal = {1: "🥇", 2: "🥈", 3: "🥉"}[pos]
             parts.append(
-                f'<text x="186" y="{cy+38}" font-size="30" '
-                f'text-anchor="middle">{medal}</text>')
+                f'<text x="186" y="{cy+38}" font-size="30" font-weight="700" '
+                f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{medal}</text>'
+            )
         cols = [
             (str(e["elo"]), "ELO", "#80d8ff"),
             (f'{e["winrate"]}%', "WINRATE", "#f2eefc"),
             (str(e["games"]), "GAMES", "#f2eefc"),
             (f'{e["wins"]}/{e["losses"]}', "W/L", "#f2eefc"),
-            (e.get("streak", "–"), "STREAK", "#ffab40"),
         ]
         cx = W - 510
         for val, lab, col in cols:
             parts.append(
-                f'<text x="{cx}" y="{cy-2}" font-size="27" font-weight="800" '
+                f'<text x="{cx}" y="{cy-2}" font-size="27" font-weight="700" '
                 f'fill="{col}" text-anchor="middle">{_esc(val)}</text>'
                 f'<text x="{cx}" y="{cy+24}" font-size="18" font-weight="700" '
                 f'fill="#9a90c0" text-anchor="middle">{lab}</text>'
             )
             cx += 100
+        # Streak: emoji icon in emoji font, number in Crimson Pro
+        streak = e.get("streak", "–")
+        if len(streak) > 1:
+            parts.append(
+                f'<text x="{cx-14}" y="{cy-2}" font-size="27" font-weight="700" '
+                f'font-family="{_EMOJI_FAMILY}" fill="#ffab40" text-anchor="middle">{_esc(streak[0])}</text>'
+                f'<text x="{cx+14}" y="{cy-2}" font-size="27" font-weight="700" '
+                f'fill="#ffab40" text-anchor="middle">{_esc(streak[1:])}</text>'
+            )
+        else:
+            parts.append(
+                f'<text x="{cx}" y="{cy-2}" font-size="27" font-weight="700" '
+                f'fill="#ffab40" text-anchor="middle">{_esc(streak)}</text>'
+            )
+        parts.append(
+            f'<text x="{cx}" y="{cy+24}" font-size="18" font-weight="700" '
+            f'fill="#9a90c0" text-anchor="middle">STREAK</text>'
+        )
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
 
@@ -198,9 +212,8 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=2):
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" '
         f'font-family="{_FONT_FAMILY}">',
-        _load_font(),
         f'<rect width="{W}" height="{height}" fill="#14101f"/>',
-        f'<text x="40" y="46" font-size="34" font-weight="800" fill="#ffd54f">'
+        f'<text x="40" y="46" font-size="34" font-weight="700" fill="#ffd54f">'
         f'{_esc(title)}</text>',
     ]
     for idx, r in enumerate(rows):
@@ -210,7 +223,7 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=2):
         parts.append(
             f'<rect x="20" y="{y+5}" width="{W-40}" height="{row_h-10}" rx="14" '
             f'fill="#ffffff" fill-opacity="0.05" stroke="{col}" stroke-opacity="0.5"/>'
-            f'<text x="45" y="{cy+9}" font-size="26" font-weight="800" '
+            f'<text x="45" y="{cy+9}" font-size="26" font-weight="700" '
             f'fill="{col}">{_esc(r["faction"])}</text>'
         )
         has = r["games"] > 0
@@ -222,7 +235,7 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=2):
         cx = W - 300
         for val, lab in cols:
             parts.append(
-                f'<text x="{cx}" y="{cy-2}" font-size="24" font-weight="800" '
+                f'<text x="{cx}" y="{cy-2}" font-size="24" font-weight="700" '
                 f'fill="#f2eefc" text-anchor="middle">{_esc(val)}</text>'
                 f'<text x="{cx}" y="{cy+20}" font-size="16" font-weight="700" '
                 f'fill="#9a90c0" text-anchor="middle">{lab}</text>'
@@ -243,7 +256,7 @@ def render_result(winner, loser, delta, out_path,
     pad = 12
     height = pad * 2 + row_h * 2
 
-    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#32015A"  # gold / dark purple
+    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#4F008F"  # gold / dark purple
 
     def row(y, p, avatar, border_col, emoji, elo_delta):
         avatar = avatar or default_avatar(p["name"])
@@ -262,14 +275,14 @@ def render_result(winner, loser, delta, out_path,
             f'<circle cx="{acx}" cy="{cy}" r="{ar+3}" fill="none" stroke="{border_col}" stroke-width="3"/>'
             f'<image x="{acx-ar}" y="{cy-ar}" width="{ar*2}" height="{ar*2}" '
             f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>'
-            f'<text x="150" y="{cy+15}" font-size="44" text-anchor="middle">{emoji}</text>'
-            f'<text x="{lx}" y="{cy-8}" font-size="34" font-weight="800" '
+            f'<text x="140" y="{cy+15}" font-size="44" font-weight="700" font-family="{_EMOJI_FAMILY}" text-anchor="middle">{emoji}</text>'
+            f'<text x="{lx}" y="{cy-8}" font-size="34" font-weight="700" '
             f'fill="#f2eefc">{_esc(p["name"])}</text>'
             f'<text x="{lx}" y="{cy+28}" font-size="23" font-weight="700" '
             f'fill="{faction_col}">{info}</text>'
-            f'<text x="{rx}" y="{cy-2}" font-size="42" font-weight="800" '
+            f'<text x="{rx}" y="{cy-2}" font-size="42" font-weight="700" '
             f'fill="#f2eefc" text-anchor="middle">{p["elo"]}</text>'
-            f'<text x="{rx}" y="{cy+30}" font-size="24" font-weight="800" '
+            f'<text x="{rx}" y="{cy+30}" font-size="24" font-weight="700" '
             f'fill="{"#66bb6a" if elo_delta>=0 else "#ef5350"}" '
             f'text-anchor="middle">{"+" if elo_delta>=0 else ""}{elo_delta}</text>'
         )
@@ -277,7 +290,6 @@ def render_result(winner, loser, delta, out_path,
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'font-family="{_FONT_FAMILY}">'
-        + _load_font()
         + _lux_bg()
         + row(pad, winner, winner_avatar, WIN_BORDER, "🏆", delta)
         + row(pad + row_h, loser, loser_avatar, LOSE_BORDER, "💀", -delta)
@@ -312,9 +324,8 @@ def render_elo_curve(out_path, k=96, scale=2):
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'font-family="{_FONT_FAMILY}">',
-        _load_font(),
         f'<rect width="{width}" height="{height}" fill="#14101f"/>',
-        f'<text x="{width//2}" y="44" font-size="30" font-weight="800" '
+        f'<text x="{width//2}" y="44" font-size="30" font-weight="700" '
         f'fill="#ffd54f" text-anchor="middle">ELO change per game (K={k})</text>',
     ]
     # gridlines + axis labels
@@ -354,7 +365,7 @@ def render_elo_curve(out_path, k=96, scale=2):
 
 
 # Async drop-ins. Rasterization is offloaded to a thread so it never blocks the loop.
-async def render_header_async(out_path, title="Frax Arena Top12"):
+async def render_header_async(out_path, title="Frax Arena Leaderboard"):
     return await asyncio.to_thread(render_header, out_path, title)
 
 
