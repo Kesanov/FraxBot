@@ -434,4 +434,15 @@ if __name__ == "__main__":
     if not config.DISCORD_TOKEN:
         raise SystemExit("Set DISCORD_TOKEN in your environment first.")
     db.init_db()
-    client.run(config.DISCORD_TOKEN)
+    delays = [60, 120, 180, 240, 600, 1800]
+    for attempt in range(1, len(delays) + 2):
+        try:
+            client.run(config.DISCORD_TOKEN)
+            break
+        except discord.errors.HTTPException as e:
+            if e.status == 429 and attempt <= len(delays):
+                delay = delays[attempt - 1]
+                print(f"Rate limited (attempt {attempt}/{len(delays) + 1}), retrying in {delay}s...")
+                time.sleep(delay)
+            else:
+                raise
