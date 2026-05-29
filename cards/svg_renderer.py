@@ -9,6 +9,7 @@ import os
 import sys
 import math
 import asyncio
+import base64
 import html as _html
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,13 +17,41 @@ from config import FACTION_COLORS  # noqa: E402
 
 W = 1040
 
+# Common font paths on Linux containers; first match wins.
+_FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+]
+_FONT_FACE = ""
+
+
+def _load_font():
+    global _FONT_FACE
+    if _FONT_FACE:
+        return _FONT_FACE
+    for path in _FONT_CANDIDATES:
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            _FONT_FACE = (
+                f'<defs><style>@font-face{{font-family:"BotFont";'
+                f'src:url("data:font/truetype;base64,{b64}")}}</style></defs>'
+            )
+            return _FONT_FACE
+    return ""
+
+
+_FONT_FAMILY = "BotFont, Arial, sans-serif"
+
 
 def _esc(s):
     return _html.escape(str(s))
 
 
-def _lux_bg(width, height):
-    # Transparent canvas; the JPEG flatten fills it with _BG.
+def _lux_bg():
     return ""
 
 
@@ -79,8 +108,9 @@ def render_header(out_path, title="Frax Arena Top12", scale=2):
     h = 152
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{h}" '
-        f'font-family="Segoe UI, Arial, sans-serif">'
-        + _lux_bg(W, h)
+        f'font-family="{_FONT_FAMILY}">'
+        + _load_font()
+        + _lux_bg()
         + f'<rect x="20" y="16" width="{W-40}" height="{h-32}" rx="22" '
           f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W*2}"/>'
         + f'<text x="{W//2}" y="{h//2+20}" font-size="56" font-weight="900" '
@@ -99,8 +129,9 @@ def render_rows(entries, out_path, scale=2):
     height = pad * 2 + row_h * len(entries)
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" '
-        f'font-family="Segoe UI, Arial, sans-serif">',
-        _lux_bg(W, height),
+        f'font-family="{_FONT_FAMILY}">',
+        _load_font(),
+        _lux_bg(),
     ]
     pos_color = {1: "#ffd54f", 2: "#7fd6e8", 3: "#cd7f32"}
     for idx, e in enumerate(entries):
@@ -166,7 +197,8 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=2):
     height = title_h + row_h * len(rows) + pad
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" '
-        f'font-family="Segoe UI, Arial, sans-serif">',
+        f'font-family="{_FONT_FAMILY}">',
+        _load_font(),
         f'<rect width="{W}" height="{height}" fill="#14101f"/>',
         f'<text x="40" y="46" font-size="34" font-weight="800" fill="#ffd54f">'
         f'{_esc(title)}</text>',
@@ -211,7 +243,7 @@ def render_result(winner, loser, delta, out_path,
     pad = 12
     height = pad * 2 + row_h * 2
 
-    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#7a1414"  # gold / very dark red
+    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#32015A"  # gold / dark purple
 
     def row(y, p, avatar, border_col, emoji, elo_delta):
         avatar = avatar or default_avatar(p["name"])
@@ -244,8 +276,9 @@ def render_result(winner, loser, delta, out_path,
 
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'font-family="Segoe UI, Arial, sans-serif">'
-        + _lux_bg(width, height)
+        f'font-family="{_FONT_FAMILY}">'
+        + _load_font()
+        + _lux_bg()
         + row(pad, winner, winner_avatar, WIN_BORDER, "🏆", delta)
         + row(pad + row_h, loser, loser_avatar, LOSE_BORDER, "💀", -delta)
         + "</svg>"
@@ -278,7 +311,8 @@ def render_elo_curve(out_path, k=96, scale=2):
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'font-family="Segoe UI, Arial, sans-serif">',
+        f'font-family="{_FONT_FAMILY}">',
+        _load_font(),
         f'<rect width="{width}" height="{height}" fill="#14101f"/>',
         f'<text x="{width//2}" y="44" font-size="30" font-weight="800" '
         f'fill="#ffd54f" text-anchor="middle">ELO change per game (K={k})</text>',

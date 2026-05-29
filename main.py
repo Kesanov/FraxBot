@@ -221,7 +221,6 @@ class PickerView(discord.ui.View):
                        f"**{g.loser.display_name}** — recorded immediately.")
         else:
             content = (
-                f"🎮 **{g.winner.display_name}** reports defeating **{g.loser.display_name}**.\n"
                 f"{g.loser.mention}, react with {CONFIRM_EMOJI} within 5 minutes to confirm — "
                 f"otherwise the match will not be recorded.")
 
