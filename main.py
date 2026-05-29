@@ -1,4 +1,4 @@
-"""H55 Discord ELO bot (FraxBot).
+"""H5 Frax Discord ELO bot (FraxBot).
 
 Run:
     $env:DISCORD_TOKEN = "..."

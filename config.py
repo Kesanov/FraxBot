@@ -1,4 +1,4 @@
-"""Configuration for the H55 Discord ELO bot.
+"""Configuration for the H5 Frax Discord ELO bot.
 
 Edit the FACTIONS / ULTIMATES lists to match your mod exactly.
 Secrets are read from environment variables so they never get committed.
@@ -35,7 +35,7 @@ FACTIONS = [
 ]
 
 # Per-faction ultimate options shown in the second dropdown.
-# >>> EDIT THESE to the real H55 ultimate ability names. <<<
+# >>> EDIT THESE to the real Frax ultimate ability names. <<<
 # Keep "None" first so a player can report that no ultimate was reached.
 ULTIMATES = {
     "Haven":      ["None", "Last Stand", "Holy Word", "Retribution"],

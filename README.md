@@ -1,4 +1,4 @@
-# H55 Discord ELO bot (FraxBot)
+# H5 Frax Discord ELO bot (FraxBot)
 
 An ELO ladder bot for the Heroes V 5.5 community. Players report 1v1 results
 (picking faction + ultimate for both sides), and the bot keeps an ELO table with
@@ -39,7 +39,7 @@ Open `preview_output/leaderboard.jpg` and `preview_output/result.jpg`.
 ## 2. Configure
 
 Edit [config.py](config.py):
-- **`ULTIMATES`** — replace the placeholder names with the real H55 ultimates per faction.
+- **`ULTIMATES`** — replace the placeholder names with the real Frax ultimates per faction.
 - `ELO_START` (1000) and `ELO_K` (32) for tuning.
 - `rank_title()` thresholds for the rank labels.
 

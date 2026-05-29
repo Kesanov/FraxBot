@@ -54,7 +54,7 @@ def _save(svg: str, out_path: str):
     return svg_path
 
 
-def render_leaderboard(entries, out_path, heading="H55 ELO Ladder",
+def render_leaderboard(entries, out_path, heading="Frax ELO Ladder",
                        subheading="Top players"):
     row_h = 78
     top = 130
@@ -152,7 +152,7 @@ def render_result(winner, loser, delta, out_path, heading="Match Reported"):
 
 # Async drop-ins so this module is interchangeable with html_renderer in the bot.
 # Rasterization is offloaded to a thread so it never blocks the event loop.
-async def render_leaderboard_async(entries, out_path, heading="H55 ELO Ladder",
+async def render_leaderboard_async(entries, out_path, heading="Frax ELO Ladder",
                                    subheading="Top players"):
     return await asyncio.to_thread(
         render_leaderboard, entries, out_path, heading, subheading)
