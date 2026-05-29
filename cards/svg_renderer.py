@@ -13,6 +13,7 @@ import html as _html
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import FACTION_COLORS  # noqa: E402
+from cards.model import _latinize
 
 W = 1040
 
@@ -259,6 +260,7 @@ def render_result(winner, loser, delta, out_path,
 
     def row(y, p, avatar, border_col, emoji, elo_delta):
         avatar = avatar or default_avatar(p["name"])
+        p = {**p, "name": _latinize(p["name"]), "faction": _latinize(p["faction"]), "ultimate": _latinize(p["ultimate"])}
         faction_col = FACTION_COLORS.get(p["faction"], "#90a4ae")
         cy = y + row_h // 2
         acx, ar = 88, 46
