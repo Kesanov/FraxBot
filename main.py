@@ -12,7 +12,6 @@ Flow:
                         message pings the enemy, who confirms with a 👍 reaction.
                         On confirmation the match is recorded, a result card is
                         posted, and the leaderboard refreshes.
-    /ladder          -> render the leaderboard on demand.
 """
 
 import asyncio
@@ -49,6 +48,7 @@ class PendingGame:
     message: discord.Message = None  # the public confirmation message
     done: bool = False
     created: float = field(default_factory=time.monotonic)
+    timeout_task: object = None      # asyncio task that expires the game
 
 
 # Games awaiting the enemy's 👍, keyed by the public confirmation message id.
@@ -59,6 +59,9 @@ _leaderboard_lock = asyncio.Lock()
 
 # Drop pending games the enemy never confirmed after this many seconds.
 PENDING_TTL = 24 * 3600
+
+# How long the enemy has to confirm with 👍 before the game is discarded.
+CONFIRM_TIMEOUT = 300  # 5 minutes
 
 # Cache of rendered avatar data URIs: user_id -> (data_uri | None, fetched_at).
 # Refreshed once a day since users can change their avatar.
@@ -174,49 +177,117 @@ class PickerView(discord.ui.View):
     async def submit(self, interaction):
         g = self.game
         # close the ephemeral picker
-        await interaction.response.edit_message(
-            content=f"Submitted. Waiting for **{g.loser.display_name}** to confirm with {CONFIRM_EMOJI}.",
-            view=None)
-        # post the public confirmation message the enemy reacts to
-        summary = (
-            f"{g.loser.mention}, **{g.winner.display_name}** reports defeating you:\n"
-            f"• **{g.winner.display_name}** — {g.factions['winner']} / {g.ultimates['winner']}\n"
-            f"• **{g.loser.display_name}** — {g.factions['loser']} / {g.ultimates['loser']}\n"
-            f"React {CONFIRM_EMOJI} to confirm the result."
-        )
-        msg = await interaction.channel.send(summary)
+        await interaction.response.edit_message(content="Submitted.", view=None)
+
+        # In test mode the match is recorded immediately (no confirmation).
+        if config.TEST_MODE:
+            res = db.record_match(
+                (g.winner.id, g.winner.display_name),
+                (g.loser.id, g.loser.display_name),
+                g.factions["winner"], g.ultimates["winner"],
+                g.factions["loser"], g.ultimates["loser"])
+        else:
+            res = db.preview_match(g.winner.id, g.loser.id)
+
+        # render the result card immediately, with avatars
+        async with aiohttp.ClientSession() as session:
+            w_av = await get_avatar(session, str(g.winner.id))
+            l_av = await get_avatar(session, str(g.loser.id))
+        out = os.path.join(config.PREVIEW_DIR, f"result_{interaction.id}.jpg")
+        winner = {"name": g.winner.display_name, "faction": g.factions["winner"],
+                  "ultimate": g.ultimates["winner"], "elo": res["winner_elo"]}
+        loser = {"name": g.loser.display_name, "faction": g.factions["loser"],
+                 "ultimate": g.ultimates["loser"], "elo": res["loser_elo"]}
+        path = await renderer.render_result_async(
+            winner, loser, res["delta"], out, winner_avatar=w_av, loser_avatar=l_av)
+
+        if config.TEST_MODE:
+            content = (f"🧪 [TEST] **{g.winner.display_name}** defeated "
+                       f"**{g.loser.display_name}** — recorded immediately.")
+        else:
+            content = (
+                f"🎮 **{g.winner.display_name}** reports defeating **{g.loser.display_name}**.\n"
+                f"{g.loser.mention}, react with {CONFIRM_EMOJI} within 5 minutes to confirm — "
+                f"otherwise the match will not be recorded.")
+
+        channel = interaction.channel or client.get_channel(interaction.channel_id)
+        try:
+            msg = await channel.send(content, file=discord.File(path))
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "⚠️ I couldn't post the public message — I'm missing the **Send Messages** "
+                "permission in this channel. Ask an admin to grant it, then report again.",
+                ephemeral=True)
+            return
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+        self.stop()
+
+        if config.TEST_MODE:
+            try:
+                await publish_leaderboard()
+            except Exception:
+                traceback.print_exc()
+            return
+
         g.message = msg
         _prune_pending()
         PENDING[msg.id] = g
+        g.timeout_task = asyncio.create_task(_expire_game(g))
         try:
             await msg.add_reaction(CONFIRM_EMOJI)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                f"Posted the result, but I'm missing the **Add Reactions** permission, so "
+                f"I couldn't add the {CONFIRM_EMOJI}. {g.loser.display_name} can still add "
+                f"it manually to confirm.", ephemeral=True)
         except discord.HTTPException:
             pass
-        self.stop()
+
+
+async def _expire_game(game: PendingGame):
+    """Discard a game the enemy never confirmed in time, with a red notice."""
+    try:
+        await asyncio.sleep(CONFIRM_TIMEOUT)
+    except asyncio.CancelledError:
+        return
+    if game.done:
+        return
+    game.done = True
+    PENDING.pop(game.message.id, None)
+    embed = discord.Embed(
+        description=(f"❌ **{game.loser.display_name}** did not confirm within 5 minutes — "
+                     f"this match was **not** recorded."),
+        color=discord.Color.red())
+    try:
+        await game.message.edit(content=None, embed=embed, attachments=[])
+    except discord.HTTPException:
+        pass
 
 
 async def confirm_game(game: PendingGame):
     if game.done:
         return
     game.done = True
+    if game.timeout_task:
+        game.timeout_task.cancel()
     w, l = game.winner, game.loser
     res = db.record_match(
         (w.id, w.display_name), (l.id, l.display_name),
         game.factions["winner"], game.ultimates["winner"],
         game.factions["loser"], game.ultimates["loser"],
     )
-    out = os.path.join(config.PREVIEW_DIR, f"result_{game.message.id}.jpg")
-    winner = {"name": w.display_name, "faction": game.factions["winner"],
-              "ultimate": game.ultimates["winner"], "elo": res["winner_elo"]}
-    loser = {"name": l.display_name, "faction": game.factions["loser"],
-             "ultimate": game.ultimates["loser"], "elo": res["loser_elo"]}
-    path = await renderer.render_result_async(winner, loser, res["delta"], out)
-    await game.message.edit(content="Result confirmed.", attachments=[discord.File(path)])
-    try:
-        os.remove(path)
-    except OSError:
-        pass
     PENDING.pop(game.message.id, None)
+    try:
+        await game.message.edit(
+            content=f"✅ Confirmed — **{w.display_name}** defeated **{l.display_name}** "
+                    f"({'+' if res['delta'] >= 0 else ''}{res['delta']} ELO).")
+    except discord.HTTPException:
+        pass
     # Refresh the leaderboard; don't let a failure here undo the recorded result.
     try:
         await publish_leaderboard()
@@ -264,64 +335,99 @@ async def on_raw_reaction_add(payload):
 # --------------------------------------------------------------------------
 # leaderboard rendering
 # --------------------------------------------------------------------------
-async def build_leaderboard_jpg(out_path):
-    players = db.top_players(10)
-    if not players:
-        return None
-    async with aiohttp.ClientSession() as session:
-        avatars = {p["user_id"]: await get_avatar(session, p["user_id"]) for p in players}
-    entries = model.build_entries(players, avatar_resolver=lambda uid: avatars.get(uid))
-    return await renderer.render_leaderboard_async(
-        entries, out_path, subheading="Top 10 players")
+async def build_leaderboard_images(tag):
+    """Render the ladder as an ordered list of image paths:
+    [header, rows 1-4, rows 5-8, rows 9-12, faction table].
+    Discord caps image height, so the rows are split into chunks of 4 and each
+    chunk is its own image (posted as separate stacked messages)."""
+    d = config.PREVIEW_DIR
+    paths = [await renderer.render_header_async(os.path.join(d, f"lb_{tag}_header.jpg"))]
+
+    players = db.top_players(12)
+    if players:
+        async with aiohttp.ClientSession() as session:
+            avatars = {p["user_id"]: await get_avatar(session, p["user_id"])
+                       for p in players}
+        entries = model.build_entries(
+            players, avatar_resolver=lambda uid: avatars.get(uid))
+        for i in range(0, len(entries), 4):
+            n = i // 4 + 1
+            out = os.path.join(d, f"lb_{tag}_chunk{n}.jpg")
+            paths.append(await renderer.render_rows_async(entries[i:i + 4], out))
+    return paths
+
+
+def _cleanup(paths):
+    for p in paths:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
 
 
 async def publish_leaderboard():
-    """Render and post/edit the leaderboard in the leaderboard channel."""
+    """Repost the ladder (header + row chunks + faction table) as stacked
+    messages in the leaderboard channel, replacing the bot's previous set."""
     if not config.LEADERBOARD_CHANNEL_ID:
         return
     channel = client.get_channel(config.LEADERBOARD_CHANNEL_ID)
     if channel is None:
         return
     async with _leaderboard_lock:
-        out = os.path.join(config.PREVIEW_DIR, "ladder_auto.jpg")
-        path = await build_leaderboard_jpg(out)
-        if not path:
-            return
-        target = None
-        async for msg in channel.history(limit=20):
-            if msg.author.id == client.user.id and msg.attachments:
-                target = msg
-                break
-        if target:
-            await target.edit(attachments=[discord.File(path)])
-        else:
-            await channel.send(file=discord.File(path))
+        paths = await build_leaderboard_images("auto")
+        # remove the bot's previous leaderboard messages so order stays correct
+        async for msg in channel.history(limit=30):
+            if msg.author.id == client.user.id:
+                try:
+                    await msg.delete()
+                except discord.HTTPException:
+                    pass
+        for p in paths:
+            await channel.send(file=discord.File(p))
+        _cleanup(paths)
 
 
-@tree.command(name="ladder", description="Show the current ELO ladder.")
-async def ladder(interaction):
-    await interaction.response.defer()
-    out = os.path.join(config.PREVIEW_DIR, f"ladder_{interaction.id}.jpg")
-    path = await build_leaderboard_jpg(out)
-    if not path:
-        await interaction.followup.send("No games recorded yet.")
+@tree.command(name="elo", description="Show a player's ELO, winrate and games.")
+@app_commands.describe(player="The player to look up")
+async def elo_cmd(interaction, player: discord.Member):
+    p = db.get_player(player.id)
+    if p is None:
+        await interaction.response.send_message(
+            f"🆕 **{player.display_name}** hasn't played any ranked games yet.",
+            ephemeral=True)
         return
-    await interaction.followup.send(file=discord.File(path))
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+    games = p["wins"] + p["losses"]
+    winrate = round(100 * p["wins"] / games) if games else 0
+    embed = discord.Embed(color=discord.Color.gold())
+    # paired fields share a row (3 inline fields per row in Discord)
+    embed.add_field(name="🏰 Player", value=p["name"], inline=True)
+    embed.add_field(name="📊 ELO", value=f"**{p['elo']}**", inline=True)
+    embed.add_field(name="🎖️ Rank", value=config.rank_title(p["elo"]), inline=True)
+    embed.add_field(name="⚔️ Games", value=str(games), inline=True)
+    embed.add_field(name="📈 Winrate", value=f"{winrate}%", inline=True)
+    embed.add_field(name="🔥 Streak", value=model.streak_label(p.get("streak", 0)),
+                    inline=True)
+    embed.add_field(name="✅ Wins", value=str(p["wins"]), inline=True)
+    embed.add_field(name="❌ Losses", value=str(p["losses"]), inline=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @client.event
 async def on_ready():
     db.init_db()
+    # Register commands per-guild (instant) and clear the global scope so commands
+    # don't show up twice (once global + once per guild).
+    for guild in client.guilds:
+        tree.copy_global_to(guild=guild)
+        await tree.sync(guild=guild)
+    tree.clear_commands(guild=None)
     await tree.sync()
     try:
         await publish_leaderboard()
     except Exception:
         traceback.print_exc()
-    print(f"Logged in as {client.user} ({client.user.id})")
+    mode = " [TEST MODE — no confirmation, test DB]" if config.TEST_MODE else ""
+    print(f"Logged in as {client.user} ({client.user.id}){mode}")
 
 
 if __name__ == "__main__":

@@ -6,3 +6,6 @@ aiohttp>=3.9
 # (no system libraries needed); Pillow flattens it to JPG.
 resvg-py>=0.1
 pillow>=10.0
+
+# Optional: load a local .env file for debugging (see .env.example).
+python-dotenv>=1.0

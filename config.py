@@ -5,6 +5,21 @@ Secrets are read from environment variables so they never get committed.
 """
 
 import os
+import sys
+
+# Run with `python main.py --test` for a sandbox: a SEPARATE database and no
+# confirmation step (matches are recorded immediately).
+TEST_MODE = "--test" in sys.argv
+
+# Load a local .env file for debugging (optional). Real hosts should set real
+# environment variables instead. Does nothing if python-dotenv isn't installed
+# or there's no .env file.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass
 
 # --- Discord ---------------------------------------------------------------
 # Set these in your environment before running the bot:
@@ -19,7 +34,7 @@ REPORT_CHANNEL_ID = int(os.environ.get("REPORT_CHANNEL_ID", "0"))
 
 # --- ELO -------------------------------------------------------------------
 ELO_START = 1000
-ELO_K = 32
+ELO_K = 96  # large K -> bigger, more exciting rating swings per game
 
 # --- Game data -------------------------------------------------------------
 # The 8 standard factions. Order here = order shown in the dropdown.
@@ -63,7 +78,7 @@ FACTION_COLORS = {
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_PATH = os.path.join(DATA_DIR, "elo.sqlite3")
+DB_PATH = os.path.join(DATA_DIR, "elo_test.sqlite3" if TEST_MODE else "elo.sqlite3")
 PREVIEW_DIR = os.path.join(BASE_DIR, "preview_output")
 
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -72,14 +87,16 @@ os.makedirs(PREVIEW_DIR, exist_ok=True)
 
 def rank_title(elo: int) -> str:
     """Map an ELO value to a display rank title."""
+    if elo >= 1800:
+        return "Champion"
     if elo >= 1600:
-        return "Grandmaster"
+        return "Renegade"
     if elo >= 1400:
-        return "Master"
+        return "Inquisitor"
     if elo >= 1250:
-        return "Veteran"
+        return "Paladin"
     if elo >= 1100:
         return "Knight"
     if elo >= 950:
         return "Squire"
-    return "Recruit"
+    return "Squire"

@@ -32,11 +32,21 @@ def build_entries(players, avatar_resolver=None):
                 "losses": p["losses"],
                 "games": games,
                 "winrate": winrate,
+                "streak": streak_label(p.get("streak", 0)),
                 "avatar": avatar or default_avatar(p["name"]),
                 "medal": MEDALS.get(i),
             }
         )
     return entries
+
+
+def streak_label(streak: int) -> str:
+    """🔥 for a win streak, 🧊 for a losing streak, – for none."""
+    if streak > 0:
+        return f"🔥{streak}"
+    if streak < 0:
+        return f"🧊{abs(streak)}"
+    return "–"
 
 
 def default_avatar(name: str) -> str:

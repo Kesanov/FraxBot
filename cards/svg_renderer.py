@@ -7,46 +7,67 @@ No Chromium or system Cairo needed.
 
 import os
 import sys
+import math
 import asyncio
 import html as _html
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import FACTION_COLORS  # noqa: E402
 
-W = 900
+W = 1040
 
 
 def _esc(s):
     return _html.escape(str(s))
 
 
-# Background the JPEG is flattened onto (matches the card background #14101f).
-_BG = (20, 16, 31)
+def _lux_bg(width, height):
+    # Transparent canvas; the JPEG flatten fills it with _BG.
+    return ""
 
 
-def _rasterize_jpg(svg: str, jpg_path: str) -> bool:
-    """Rasterize SVG -> JPG. resvg (self-contained wheel, cross-platform) renders
-    to PNG bytes, then Pillow flattens alpha and saves JPEG. True on success."""
+# Warm dark cell, 70% transparent, framed by a bronze edge.
+_CELL_FILL = 'fill="#1c1410" fill-opacity="0.3"'
+_GOLD_EDGE = '#a9743f'  # bronze
+_CELL_STROKE_W = 4
+_CELL_STROKE_OPACITY = 0.8
+
+# Very dim, per-rank accent colors for the rank label under each name.
+RANK_COLORS = {
+    "Champion": "#d9b44a",
+    "Renegade": "#c98a6b",
+    "Inquisitor": "#9fb0d0",
+    "Paladin": "#a98fc0",
+    "Knight": "#8fa0b0",
+    "Squire": "#9a9a86",
+    "Peasant": "#8a8a8a",
+}
+
+MEDAL_EMOJI = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+
+def _rasterize_webp(svg: str, webp_path: str, scale: float = 2) -> bool:
+    """Rasterize SVG -> WebP, keeping the alpha channel. resvg (self-contained
+    wheel, cross-platform) renders to PNG bytes, then Pillow saves WebP — alpha
+    preserved, far smaller than PNG. True on success."""
     try:
         import io
         import resvg_py
         from PIL import Image
 
-        png = bytes(resvg_py.svg_to_bytes(svg_string=svg, zoom=2))
+        png = bytes(resvg_py.svg_to_bytes(svg_string=svg, zoom=scale))
         img = Image.open(io.BytesIO(png)).convert("RGBA")
-        bg = Image.new("RGB", img.size, _BG)
-        bg.paste(img, mask=img.split()[3])
-        bg.save(jpg_path, "JPEG", quality=92)
+        img.save(webp_path, "WEBP", quality=92, method=6)
         return True
     except Exception:
         return False
 
 
-def _save(svg: str, out_path: str):
+def _save(svg: str, out_path: str, scale: float = 2):
     base, _ = os.path.splitext(out_path)
-    jpg_path = base + ".jpg"
-    if _rasterize_jpg(svg, jpg_path):
-        return jpg_path
+    webp_path = base + ".webp"
+    if _rasterize_webp(svg, webp_path, scale):
+        return webp_path
     # rasterizer unavailable: fall back to writing the raw .svg
     svg_path = base + ".svg"
     with open(svg_path, "w", encoding="utf-8") as f:
@@ -54,83 +75,169 @@ def _save(svg: str, out_path: str):
     return svg_path
 
 
-def render_leaderboard(entries, out_path, heading="Frax ELO Ladder",
-                       subheading="Top players"):
-    row_h = 78
-    top = 130
-    height = top + row_h * len(entries) + 20
+def render_header(out_path, title="Frax Arena Top12", scale=2):
+    h = 152
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{h}" '
+        f'font-family="Segoe UI, Arial, sans-serif">'
+        + _lux_bg(W, h)
+        + f'<rect x="20" y="16" width="{W-40}" height="{h-32}" rx="22" '
+          f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W*2}"/>'
+        + f'<text x="{W//2}" y="{h//2+20}" font-size="56" font-weight="900" '
+          f'fill="#ffd54f" stroke="#ffd54f" stroke-width="1.2" '
+          f'text-anchor="middle">🏆  {_esc(title)}  🏆</text>'
+        + '</svg>'
+    )
+    return _save(svg, out_path, scale)
+
+
+def render_rows(entries, out_path, scale=2):
+    """Render a chunk of leaderboard rows (no header). `entries` keep their
+    global `position`. Small labels are enlarged and bold for readability."""
+    row_h = 92
+    pad = 10
+    height = pad * 2 + row_h * len(entries)
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" '
         f'font-family="Segoe UI, Arial, sans-serif">',
-        f'<rect width="{W}" height="{height}" fill="#14101f"/>',
-        f'<text x="40" y="56" font-size="40" font-weight="800" fill="#ffd54f">{_esc(heading)}</text>',
-        f'<text x="40" y="86" font-size="16" fill="#9a90c0">{_esc(subheading)}</text>',
+        _lux_bg(W, height),
     ]
-    medals = {1: "#ffd54f", 2: "#cfd8dc", 3: "#cd7f32"}
-    for e in entries:
-        y = top + (e["position"] - 1) * row_h
+    pos_color = {1: "#ffd54f", 2: "#7fd6e8", 3: "#cd7f32"}
+    for idx, e in enumerate(entries):
+        y = pad + idx * row_h
+        cy = y + row_h // 2
+        pos = e["position"]
+        pc = pos_color.get(pos, "#8a80b0")
         parts.append(
-            f'<rect x="30" y="{y}" width="{W-60}" height="{row_h-12}" rx="14" '
-            f'fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.08"/>'
+            f'<rect x="20" y="{y+6}" width="{W-40}" height="{row_h-12}" rx="16" '
+            f'{_CELL_FILL} stroke="{_GOLD_EDGE}" '
+            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>'
         )
-        pc = medals.get(e["position"], "#8a80b0")
         parts.append(
-            f'<text x="70" y="{y+44}" font-size="26" font-weight="800" '
-            f'fill="{pc}" text-anchor="middle">#{e["position"]}</text>'
+            f'<text x="72" y="{cy+12}" font-size="36" font-weight="800" '
+            f'fill="{pc}" text-anchor="middle">#{pos}</text>'
         )
-        # avatar (clipped circle)
-        cid = f"clip{e['position']}"
+        cid = f"clip_{pos}"
         parts.append(
-            f'<clipPath id="{cid}"><circle cx="135" cy="{y+33}" r="26"/></clipPath>'
-            f'<image x="109" y="{y+7}" width="52" height="52" '
+            f'<clipPath id="{cid}"><circle cx="160" cy="{cy}" r="34"/></clipPath>'
+            f'<circle cx="160" cy="{cy}" r="36" fill="none" '
+            f'stroke="{pc if pos in pos_color else _GOLD_EDGE}" '
+            f'stroke-opacity="{0.9 if pos in pos_color else 0.5}" stroke-width="2"/>'
+            f'<image x="126" y="{cy-34}" width="68" height="68" '
             f'href="{_esc(e["avatar"])}" clip-path="url(#{cid})"/>'
         )
+        name_x = 215
+        name_col = pc if pos in pos_color else "#f2eefc"
         parts.append(
-            f'<text x="180" y="{y+30}" font-size="22" font-weight="700" fill="#f2eefc">{_esc(e["name"])}</text>'
-            f'<text x="180" y="{y+52}" font-size="14" fill="#c9a7ff">{_esc(e["rank"])}</text>'
+            f'<text x="{name_x}" y="{cy-2}" font-size="30" font-weight="800" '
+            f'fill="{name_col}">{_esc(e["name"])}</text>'
+            f'<text x="{name_x}" y="{cy+26}" font-size="19" font-weight="700" '
+            f'fill="{RANK_COLORS.get(e["rank"], "#9a90c0")}">{_esc(e["rank"])}</text>'
         )
+        medal = MEDAL_EMOJI.get(pos)
+        if medal:  # overlap the avatar's bottom-right corner; no layout shift
+            parts.append(
+                f'<text x="186" y="{cy+38}" font-size="30" '
+                f'text-anchor="middle">{medal}</text>')
         cols = [
             (str(e["elo"]), "ELO", "#80d8ff"),
             (f'{e["winrate"]}%', "WINRATE", "#f2eefc"),
             (str(e["games"]), "GAMES", "#f2eefc"),
-            (f'{e["wins"]}-{e["losses"]}', "W-L", "#f2eefc"),
+            (f'{e["wins"]}/{e["losses"]}', "W/L", "#f2eefc"),
+            (e.get("streak", "–"), "STREAK", "#ffab40"),
         ]
-        x = W - 360
+        cx = W - 510
         for val, lab, col in cols:
             parts.append(
-                f'<text x="{x+40}" y="{y+30}" font-size="20" font-weight="700" '
+                f'<text x="{cx}" y="{cy-2}" font-size="27" font-weight="800" '
                 f'fill="{col}" text-anchor="middle">{_esc(val)}</text>'
-                f'<text x="{x+40}" y="{y+50}" font-size="11" fill="#9a90c0" '
-                f'text-anchor="middle">{lab}</text>'
+                f'<text x="{cx}" y="{cy+24}" font-size="18" font-weight="700" '
+                f'fill="#9a90c0" text-anchor="middle">{lab}</text>'
             )
-            x += 85
+            cx += 100
     parts.append("</svg>")
-    return _save("".join(parts), out_path)
+    return _save("".join(parts), out_path, scale)
 
 
-def render_result(winner, loser, delta, out_path, heading="Match Reported"):
-    w_col = FACTION_COLORS.get(winner["faction"], "#d9b44a")
-    l_col = FACTION_COLORS.get(loser["faction"], "#90a4ae")
-    width, height = 820, 170
-    py, ph = 42, 112  # panel top / height
+def render_faction_table(rows, out_path, title="Faction Winrate", scale=2):
+    title_h = 64
+    row_h = 64
+    pad = 10
+    height = title_h + row_h * len(rows) + pad
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" '
+        f'font-family="Segoe UI, Arial, sans-serif">',
+        f'<rect width="{W}" height="{height}" fill="#14101f"/>',
+        f'<text x="40" y="46" font-size="34" font-weight="800" fill="#ffd54f">'
+        f'{_esc(title)}</text>',
+    ]
+    for idx, r in enumerate(rows):
+        y = title_h + idx * row_h
+        cy = y + row_h // 2
+        col = FACTION_COLORS.get(r["faction"], "#90a4ae")
+        parts.append(
+            f'<rect x="20" y="{y+5}" width="{W-40}" height="{row_h-10}" rx="14" '
+            f'fill="#ffffff" fill-opacity="0.05" stroke="{col}" stroke-opacity="0.5"/>'
+            f'<text x="45" y="{cy+9}" font-size="26" font-weight="800" '
+            f'fill="{col}">{_esc(r["faction"])}</text>'
+        )
+        has = r["games"] > 0
+        cols = [
+            (f'{r["winrate"]}%' if has else "N/A", "WINRATE"),
+            (str(r["games"]), "GAMES"),
+            (f'{r["wins"]}/{r["losses"]}' if has else "N/A", "W/L"),
+        ]
+        cx = W - 300
+        for val, lab in cols:
+            parts.append(
+                f'<text x="{cx}" y="{cy-2}" font-size="24" font-weight="800" '
+                f'fill="#f2eefc" text-anchor="middle">{_esc(val)}</text>'
+                f'<text x="{cx}" y="{cy+20}" font-size="16" font-weight="700" '
+                f'fill="#9a90c0" text-anchor="middle">{lab}</text>'
+            )
+            cx += 100
+    parts.append("</svg>")
+    return _save("".join(parts), out_path, scale)
 
-    def side(x, p, col, badge, elo_delta):
-        lx = x + 20          # left text column
-        rx = x + 268         # right (elo) column, centered
+
+def render_result(winner, loser, delta, out_path,
+                  winner_avatar=None, loser_avatar=None, scale=2):
+    """Two stacked rows: winner on top, loser below. Faction + ultimate share a
+    line; emoji badges replace VICTORY/DEFEAT text."""
+    from cards.model import default_avatar
+
+    width = 900
+    row_h = 124
+    pad = 12
+    height = pad * 2 + row_h * 2
+
+    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#7a1414"  # gold / very dark red
+
+    def row(y, p, avatar, border_col, emoji, elo_delta):
+        avatar = avatar or default_avatar(p["name"])
+        faction_col = FACTION_COLORS.get(p["faction"], "#90a4ae")
+        cy = y + row_h // 2
+        acx, ar = 88, 46
+        lx = 210
+        rx = width - 150
+        cid = f"clip_{y}"
+        info = f'{_esc(p["faction"])}  ·  {_esc(p["ultimate"])}'
         return (
-            f'<rect x="{x}" y="{py}" width="340" height="{ph}" rx="16" '
-            f'fill="#ffffff" fill-opacity="0.05" stroke="{col}" stroke-width="2"/>'
-            f'<text x="{lx}" y="{py+30}" font-size="20" font-weight="800" '
+            f'<rect x="20" y="{y}" width="{width-40}" height="{row_h-12}" rx="18" '
+            f'{_CELL_FILL} stroke="{border_col}" '
+            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>'
+            f'<clipPath id="{cid}"><circle cx="{acx}" cy="{cy}" r="{ar}"/></clipPath>'
+            f'<circle cx="{acx}" cy="{cy}" r="{ar+3}" fill="none" stroke="{border_col}" stroke-width="3"/>'
+            f'<image x="{acx-ar}" y="{cy-ar}" width="{ar*2}" height="{ar*2}" '
+            f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>'
+            f'<text x="150" y="{cy+15}" font-size="44" text-anchor="middle">{emoji}</text>'
+            f'<text x="{lx}" y="{cy-8}" font-size="34" font-weight="800" '
             f'fill="#f2eefc">{_esc(p["name"])}</text>'
-            f'<text x="{lx}" y="{py+56}" font-size="15" font-weight="700" '
-            f'fill="{col}">{_esc(p["faction"])}</text>'
-            f'<text x="{lx}" y="{py+78}" font-size="12" fill="#b9aee0">'
-            f'Ult: {_esc(p["ultimate"])}</text>'
-            f'<text x="{rx}" y="{py+26}" font-size="11" letter-spacing="2" '
-            f'fill="{col}" text-anchor="middle">{badge}</text>'
-            f'<text x="{rx}" y="{py+64}" font-size="26" font-weight="800" '
+            f'<text x="{lx}" y="{cy+28}" font-size="23" font-weight="700" '
+            f'fill="{faction_col}">{info}</text>'
+            f'<text x="{rx}" y="{cy-2}" font-size="42" font-weight="800" '
             f'fill="#f2eefc" text-anchor="middle">{p["elo"]}</text>'
-            f'<text x="{rx}" y="{py+88}" font-size="14" '
+            f'<text x="{rx}" y="{cy+30}" font-size="24" font-weight="800" '
             f'fill="{"#66bb6a" if elo_delta>=0 else "#ef5350"}" '
             f'text-anchor="middle">{"+" if elo_delta>=0 else ""}{elo_delta}</text>'
         )
@@ -138,26 +245,94 @@ def render_result(winner, loser, delta, out_path, heading="Match Reported"):
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'font-family="Segoe UI, Arial, sans-serif">'
-        f'<rect width="{width}" height="{height}" fill="#14101f"/>'
-        f'<text x="{width//2}" y="30" font-size="22" font-weight="800" '
-        f'fill="#ffd54f" text-anchor="middle">{_esc(heading)}</text>'
-        + side(30, winner, w_col, "VICTORY", delta)
-        + f'<text x="{width//2}" y="{py+ph//2+8}" font-size="24" font-weight="900" '
-          f'fill="#6a5f95" text-anchor="middle">VS</text>'
-        + side(450, loser, l_col, "DEFEAT", -delta)
+        + _lux_bg(width, height)
+        + row(pad, winner, winner_avatar, WIN_BORDER, "🏆", delta)
+        + row(pad + row_h, loser, loser_avatar, LOSE_BORDER, "💀", -delta)
         + "</svg>"
     )
-    return _save(svg, out_path)
+    return _save(svg, out_path, scale)
 
 
-# Async drop-ins so this module is interchangeable with html_renderer in the bot.
-# Rasterization is offloaded to a thread so it never blocks the event loop.
-async def render_leaderboard_async(entries, out_path, heading="Frax ELO Ladder",
-                                   subheading="Top players"):
+def render_elo_curve(out_path, k=96, scale=2):
+    """Line chart: ELO gained on a win / lost on a loss vs the rating gap
+    (your ELO − opponent ELO), from -500 to +500."""
+    width, height = 980, 560
+    left, right, top, bot = 90, 40, 80, 80
+    pw, ph = width - left - right, height - top - bot
+
+    def X(d):
+        return left + (d + 500) / 1000 * pw
+
+    def Y(v):
+        return top + ph - (v / 100) * ph
+
+    def expected(d):
+        return 1 / (1 + 10 ** (-d / 400))
+
+    def poly(fn):
+        pts = " ".join(f"{X(d):.1f},{Y(fn(d)):.1f}" for d in range(-500, 501, 20))
+        return pts
+
+    win = poly(lambda d: k * (1 - expected(d)))
+    loss = poly(lambda d: k * expected(d))
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'font-family="Segoe UI, Arial, sans-serif">',
+        f'<rect width="{width}" height="{height}" fill="#14101f"/>',
+        f'<text x="{width//2}" y="44" font-size="30" font-weight="800" '
+        f'fill="#ffd54f" text-anchor="middle">ELO change per game (K={k})</text>',
+    ]
+    # gridlines + axis labels
+    for v in (0, 25, 50, 75, 100):
+        gy = Y(v)
+        parts.append(
+            f'<line x1="{left}" y1="{gy:.1f}" x2="{left+pw}" y2="{gy:.1f}" '
+            f'stroke="#ffffff" stroke-opacity="0.08"/>'
+            f'<text x="{left-12}" y="{gy+6:.1f}" font-size="18" font-weight="700" '
+            f'fill="#9a90c0" text-anchor="end">{v}</text>'
+        )
+    for d in (-500, -250, 0, 250, 500):
+        gx = X(d)
+        parts.append(
+            f'<line x1="{gx:.1f}" y1="{top}" x2="{gx:.1f}" y2="{top+ph}" '
+            f'stroke="#ffffff" stroke-opacity="0.08"/>'
+            f'<text x="{gx:.1f}" y="{top+ph+30}" font-size="18" font-weight="700" '
+            f'fill="#9a90c0" text-anchor="middle">{"+" if d>0 else ""}{d}</text>'
+        )
+    parts.append(
+        f'<text x="{left+pw//2}" y="{height-22}" font-size="20" font-weight="700" '
+        f'fill="#c9a7ff" text-anchor="middle">Your ELO − Opponent ELO</text>'
+    )
+    parts.append(f'<polyline points="{win}" fill="none" stroke="#66bb6a" stroke-width="4"/>')
+    parts.append(f'<polyline points="{loss}" fill="none" stroke="#ef5350" stroke-width="4"/>')
+    # legend
+    parts.append(
+        f'<rect x="{left+20}" y="{top+10}" width="20" height="20" fill="#66bb6a"/>'
+        f'<text x="{left+48}" y="{top+27}" font-size="20" font-weight="700" '
+        f'fill="#f2eefc">If you win</text>'
+        f'<rect x="{left+20}" y="{top+40}" width="20" height="20" fill="#ef5350"/>'
+        f'<text x="{left+48}" y="{top+57}" font-size="20" font-weight="700" '
+        f'fill="#f2eefc">If you lose</text>'
+    )
+    parts.append("</svg>")
+    return _save("".join(parts), out_path, scale)
+
+
+# Async drop-ins. Rasterization is offloaded to a thread so it never blocks the loop.
+async def render_header_async(out_path, title="Frax Arena Top12"):
+    return await asyncio.to_thread(render_header, out_path, title)
+
+
+async def render_rows_async(entries, out_path):
+    return await asyncio.to_thread(render_rows, entries, out_path)
+
+
+async def render_faction_table_async(rows, out_path):
+    return await asyncio.to_thread(render_faction_table, rows, out_path)
+
+
+async def render_result_async(winner, loser, delta, out_path,
+                              winner_avatar=None, loser_avatar=None):
     return await asyncio.to_thread(
-        render_leaderboard, entries, out_path, heading, subheading)
-
-
-async def render_result_async(winner, loser, delta, out_path, heading="Match Reported"):
-    return await asyncio.to_thread(
-        render_result, winner, loser, delta, out_path, heading)
+        render_result, winner, loser, delta, out_path, winner_avatar, loser_avatar)

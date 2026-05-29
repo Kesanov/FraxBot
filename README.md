@@ -2,7 +2,7 @@
 
 An ELO ladder bot for the Heroes V 5.5 community. Players report 1v1 results
 (picking faction + ultimate for both sides), and the bot keeps an ELO table with
-auto-refreshing top-10 leaderboard cards rendered as JPG from SVG.
+auto-refreshing top-10 leaderboard cards rendered as transparent WebP from SVG.
 
 ## Layout
 
@@ -22,7 +22,7 @@ discord/
 
 ## Rendering
 
-Cards are built as SVG and rasterized to **JPG** with **resvg** (`resvg-py`, a
+Cards are built as SVG and rasterized to **transparent WebP** with **resvg** (`resvg-py`, a
 self-contained cross-platform wheel — no system libraries) plus Pillow. The same
 `pip install` works on Windows and on any Linux host, which makes it free-host
 friendly: no Chromium, no `apt-get`.
@@ -64,10 +64,14 @@ Edit [config.py](config.py):
 
 ```powershell
 $env:DISCORD_TOKEN = "your-bot-token"
-$env:REPORT_CHANNEL_ID = "123456789012345678"        # where players run /game
+$env:REPORT_CHANNEL_ID = "123456789012345678"        # where players run /defeated
 $env:LEADERBOARD_CHANNEL_ID = "987654321098765432"   # where the ladder is auto-posted
 python main.py
 ```
+
+For local debugging you can instead copy `.env.example` to `.env` and fill it in;
+it's loaded automatically (and `.env` is gitignored). On real hosts, set actual
+environment variables rather than shipping a `.env`.
 
 Two channels:
 - **Report channel** (`REPORT_CHANNEL_ID`) — where players run `/game`. If unset,
@@ -76,10 +80,22 @@ Two channels:
   ladder card lives here.
 
 Commands (slash):
-- `/defeated @enemy` — the caller claims a win. Both players pick faction +
-  ultimate, then the **enemy confirms by reacting 👍**. On confirmation the match
-  is recorded, a result card is posted, and the leaderboard refreshes.
-- `/ladder` — render the current top-10 on demand.
+- `/defeated @enemy` — the caller claims a win. The caller picks faction +
+  ultimate for both players; the result card is posted immediately and the
+  **enemy confirms by reacting 👍** within 5 minutes (otherwise it's discarded
+  with a red notice). On confirmation the match is recorded and the leaderboard
+  refreshes.
+- `/elo @player` — ephemeral text card with the player's rank, ELO, games and winrate.
+
+The leaderboard is posted as stacked messages (Discord caps image height): a
+header, then the top 12 in chunks of 4 (1–4, 5–8, 9–12), then a faction-winrate
+table.
+
+### Test mode
+
+Run `python main.py --test` for a sandbox: it uses a **separate database**
+(`data/elo_test.sqlite3`) and **skips confirmation** — `/defeated` records the
+match immediately. Handy for trying the flow without polluting real ratings.
 
 The leaderboard is drawn once on startup and refreshed after every confirmed
 game, editing its last message in the leaderboard channel.
