@@ -4,16 +4,11 @@ import sys
 import os
 import html as _html
 
-try:
-    from unidecode import unidecode as _unidecode
-except ImportError:
-    _unidecode = None
+from unidecode import unidecode as _unidecode
 
 
 def _latinize(name: str) -> str:
     """Transliterate non-Latin characters to ASCII so Crimson Pro can render them."""
-    if _unidecode is None:
-        return name
     return _unidecode(name)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
