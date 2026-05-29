@@ -17,7 +17,6 @@ Flow:
 import asyncio
 import base64
 import os
-import sys
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -445,6 +444,5 @@ if __name__ == "__main__":
                 delay = delays[attempt - 1]
                 print(f"Rate limited (attempt {attempt}/{len(delays) + 1}), retrying in {delay}s...")
                 time.sleep(delay)
-                os.execv(sys.executable, [sys.executable] + sys.argv)
             else:
                 raise
