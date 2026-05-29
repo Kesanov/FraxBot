@@ -4,6 +4,18 @@ import sys
 import os
 import html as _html
 
+try:
+    from unidecode import unidecode as _unidecode
+except ImportError:
+    _unidecode = None
+
+
+def _latinize(name: str) -> str:
+    """Transliterate non-Latin characters to ASCII so Crimson Pro can render them."""
+    if _unidecode is None:
+        return name
+    return _unidecode(name)
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import rank_title  # noqa: E402
 
@@ -25,7 +37,7 @@ def build_entries(players, avatar_resolver=None):
         entries.append(
             {
                 "position": i,
-                "name": p["name"],
+                "name": _latinize(p["name"]),
                 "elo": p["elo"],
                 "rank": rank_title(p["elo"]),
                 "wins": p["wins"],

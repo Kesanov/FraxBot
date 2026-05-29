@@ -18,12 +18,11 @@ W = 1040
 
 _FONT_DIR = os.path.dirname(__file__)
 _FONT_FILES = [
-    ("Crimson Pro",   "400", "normal", "CrimsonPro-Regular.ttf"),
-    ("Crimson Pro",   "700", "normal", "CrimsonPro-Bold.ttf"),
-    ("Crimson Pro",   "400", "italic", "CrimsonPro-Italic.ttf"),
+    ("Crimson Pro",      "400", "normal", "CrimsonPro-Regular.ttf"),
+    ("Crimson Pro",      "700", "normal", "CrimsonPro-Bold.ttf"),
+    ("Crimson Pro",      "400", "italic", "CrimsonPro-Italic.ttf"),
     ("Noto Color Emoji", "400", "normal", "NotoColorEmoji.ttf"),
 ]
-# No fallback: if the font fails to load, text simply won't render.
 _FONT_FAMILY = "Crimson Pro"
 # IMPORTANT: emoji and text must NEVER share a <text> element (not even via <tspan>).
 # resvg resolves font-family once per <text> element; if any glyph in the element
@@ -256,7 +255,7 @@ def render_result(winner, loser, delta, out_path,
     pad = 12
     height = pad * 2 + row_h * 2
 
-    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#4F008F"  # gold / dark purple
+    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#6800BD"  # gold / dark purple
 
     def row(y, p, avatar, border_col, emoji, elo_delta):
         avatar = avatar or default_avatar(p["name"])
