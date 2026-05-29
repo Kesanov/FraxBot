@@ -35,8 +35,23 @@ CONFIRM_EMOJI = "👍"
 # Default (non-privileged) intents are enough: slash commands resolve Member
 # objects directly, reactions are in the default set, and avatars come via REST.
 intents = discord.Intents.default()
-client = discord.Client(intents=intents)
-tree = app_commands.CommandTree(client)
+
+client: discord.Client = None
+tree: app_commands.CommandTree = None
+
+
+def _make_client():
+    global client, tree
+    client = discord.Client(intents=intents)
+    tree = app_commands.CommandTree(client)
+    client.event(on_raw_reaction_add)
+    client.event(on_ready)
+    tree.command(name="defeated", description="Report that you defeated another player.")(
+        app_commands.describe(enemy="The player you defeated")(defeated)
+    )
+    tree.command(name="elo", description="Show a player's ELO, winrate and games.")(
+        app_commands.describe(player="The player to look up")(elo_cmd)
+    )
 
 
 @dataclass
@@ -295,8 +310,6 @@ async def confirm_game(game: PendingGame):
         traceback.print_exc()
 
 
-@tree.command(name="defeated", description="Report that you defeated another player.")
-@app_commands.describe(enemy="The player you defeated")
 async def defeated(interaction, enemy: discord.Member):
     if config.REPORT_CHANNEL_ID and interaction.channel_id != config.REPORT_CHANNEL_ID:
         await interaction.response.send_message(
@@ -318,7 +331,6 @@ async def defeated(interaction, enemy: discord.Member):
         view=view, ephemeral=True)
 
 
-@client.event
 async def on_raw_reaction_add(payload):
     if payload.user_id == client.user.id:
         return
@@ -387,8 +399,6 @@ async def publish_leaderboard():
         _cleanup(paths)
 
 
-@tree.command(name="elo", description="Show a player's ELO, winrate and games.")
-@app_commands.describe(player="The player to look up")
 async def elo_cmd(interaction, player: discord.Member):
     p = db.get_player(player.id)
     if p is None:
@@ -412,7 +422,6 @@ async def elo_cmd(interaction, player: discord.Member):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@client.event
 async def on_ready():
     db.init_db()
     # Register commands per-guild (instant) and clear the global scope so commands
@@ -434,8 +443,9 @@ if __name__ == "__main__":
     if not config.DISCORD_TOKEN:
         raise SystemExit("Set DISCORD_TOKEN in your environment first.")
     db.init_db()
-    delays = [60, 120, 180, 240, 600, 1800]
+    delays = [60, 120, 180, 240, 600, 1800, 10800, 86400]
     for attempt in range(1, len(delays) + 2):
+        _make_client()
         try:
             client.run(config.DISCORD_TOKEN)
             break
