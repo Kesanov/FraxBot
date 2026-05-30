@@ -2,7 +2,7 @@
 
 Run:
     $env:DISCORD_TOKEN = "..."
-    $env:REPORT_CHANNEL_ID = "..."        # where players run /defeated
+    $env:REPORTS_CHANNEL_ID = "..."        # where result cards are posted
     $env:LEADERBOARD_CHANNEL_ID = "..."   # where the ladder is auto-posted
     python main.py
 
@@ -79,9 +79,11 @@ PENDING_TTL = 24 * 3600
 CONFIRM_TIMEOUT = 300  # 5 minutes
 
 # Cache of rendered avatar data URIs: user_id -> (data_uri | None, fetched_at).
-# Refreshed once a day since users can change their avatar.
+# Cache of display names: user_id -> (name | None, fetched_at).
+# Both refreshed once a day since users can change them.
 AVATAR_TTL = 24 * 3600
 _avatar_cache: dict[str, tuple[str | None, float]] = {}
+_name_cache: dict[str, tuple[str | None, float]] = {}
 
 
 def _prune_pending():
@@ -121,6 +123,31 @@ async def get_avatar(session, user_id: str) -> str | None:
     return data_uri
 
 
+async def get_display_name(user_id: str) -> str | None:
+    """Return a cached server display name, refreshing entries older than a day."""
+    now = time.monotonic()
+    cached = _name_cache.get(user_id)
+    if cached and now - cached[1] < AVATAR_TTL:
+        return cached[0]
+    try:
+        uid = int(user_id)
+        name = None
+        for guild in client.guilds:
+            try:
+                member = await guild.fetch_member(uid)
+                name = member.display_name
+                break
+            except discord.NotFound:
+                continue
+        if name is None:
+            user = await client.fetch_user(uid)
+            name = user.display_name
+    except Exception:
+        name = cached[0] if cached else None  # keep stale value on failure
+    _name_cache[user_id] = (name, now)
+    return name
+
+
 # --------------------------------------------------------------------------
 # Ephemeral picker — the reporter sets faction + ultimate for both players
 # --------------------------------------------------------------------------
@@ -129,38 +156,38 @@ class FactionSelect(discord.ui.Select):
         self._pview = view
         self.side = side  # "winner" or "loser"
         player = view.game.winner if side == "winner" else view.game.loser
-        options = [discord.SelectOption(label=f, value=f) for f in config.FACTIONS]
-        super().__init__(placeholder=f"{player.display_name} — faction",
+        options = [
+            discord.SelectOption(label=f"{f}: {c}", value=f"{f}: {c}")
+            for f in config.FACTIONS
+            for c in config.CLASSES
+        ]
+        super().__init__(placeholder=f"{player.display_name}: Town & Class",
                          options=options, row=row)
 
     async def callback(self, interaction):
         self._pview.game.factions[self.side] = self.values[0]
-        self._pview.game.ultimates[self.side] = None
-        self._pview.rebuild()
-        await interaction.response.edit_message(view=self._pview)
+        await interaction.response.defer()
 
 
 class UltimateSelect(discord.ui.Select):
-    def __init__(self, view, side, faction, row):
+    def __init__(self, view, side, row):
         self._pview = view
         self.side = side
         player = view.game.winner if side == "winner" else view.game.loser
-        opts = config.ULTIMATES.get(faction, ["None"])
-        options = [discord.SelectOption(label=u, value=u) for u in opts]
-        super().__init__(placeholder=f"{player.display_name} — ultimate ({faction})",
+        options = [discord.SelectOption(label=u, value=u) for u in config.ULTIMATES]
+        super().__init__(placeholder=f"{player.display_name}: Ultimate",
                          options=options, row=row)
 
     async def callback(self, interaction):
         self._pview.game.ultimates[self.side] = self.values[0]
-        self._pview.rebuild()
-        await interaction.response.edit_message(view=self._pview)
+        await interaction.response.defer()
 
 
 class SubmitButton(discord.ui.Button):
     def __init__(self, view):
         self._pview = view
         super().__init__(label="Submit for confirmation", style=discord.ButtonStyle.success,
-                         disabled=not view.is_ready(), row=4)
+                         row=4)
 
     async def callback(self, interaction):
         await self._pview.submit(interaction)
@@ -172,25 +199,18 @@ class PickerView(discord.ui.View):
     def __init__(self, game: PendingGame):
         super().__init__(timeout=300)
         self.game = game
-        self.rebuild()
-
-    def is_ready(self):
-        g = self.game
-        return all(g.factions.values()) and all(g.ultimates.values())
-
-    def rebuild(self):
-        self.clear_items()
-        g = self.game
         self.add_item(FactionSelect(self, "winner", row=0))
-        if g.factions["winner"]:
-            self.add_item(UltimateSelect(self, "winner", g.factions["winner"], row=1))
+        self.add_item(UltimateSelect(self, "winner", row=1))
         self.add_item(FactionSelect(self, "loser", row=2))
-        if g.factions["loser"]:
-            self.add_item(UltimateSelect(self, "loser", g.factions["loser"], row=3))
+        self.add_item(UltimateSelect(self, "loser", row=3))
         self.add_item(SubmitButton(self))
 
     async def submit(self, interaction):
         g = self.game
+        if not (all(g.factions.values()) and all(g.ultimates.values())):
+            await interaction.response.send_message(
+                "Please select a faction and ultimate for both players first.", ephemeral=True)
+            return
         # close the ephemeral picker
         await interaction.response.edit_message(content="Submitted.", view=None)
 
@@ -221,16 +241,19 @@ class PickerView(discord.ui.View):
                        f"**{g.loser.display_name}** — recorded immediately.")
         else:
             content = (
-                f"{g.loser.mention}, react with {CONFIRM_EMOJI} within 5 minutes to confirm — "
-                f"otherwise the match will not be recorded.")
+                f"{g.loser.mention} use {CONFIRM_EMOJI} to confirm within 5 minutes")
 
-        channel = interaction.channel or client.get_channel(interaction.channel_id)
+        channel = client.get_channel(config.REPORTS_CHANNEL_ID) or \
+            await client.fetch_channel(config.REPORTS_CHANNEL_ID)
+        if channel is None:
+            await interaction.followup.send(
+                "⚠️ Reports channel not found — check REPORTS_CHANNEL_ID.", ephemeral=True)
+            return
         try:
             msg = await channel.send(content, file=discord.File(path))
         except discord.Forbidden:
             await interaction.followup.send(
-                "⚠️ I couldn't post the public message — I'm missing the **Send Messages** "
-                "permission in this channel. Ask an admin to grant it, then report again.",
+                "⚠️ I'm missing **Send Messages** permission in the reports channel.",
                 ephemeral=True)
             return
         finally:
@@ -273,12 +296,13 @@ async def _expire_game(game: PendingGame):
         return
     game.done = True
     PENDING.pop(game.message.id, None)
-    embed = discord.Embed(
-        description=(f"❌ **{game.loser.display_name}** did not confirm within 5 minutes — "
-                     f"this match was **not** recorded."),
-        color=discord.Color.red())
     try:
-        await game.message.edit(content=None, embed=embed, attachments=[])
+        await game.message.clear_reactions()
+    except discord.HTTPException:
+        pass
+    try:
+        await game.message.edit(
+            content=f"❌ Failed to confirm in time — match not recorded.")
     except discord.HTTPException:
         pass
 
@@ -310,10 +334,6 @@ async def confirm_game(game: PendingGame):
 
 
 async def defeated(interaction, enemy: discord.Member):
-    if config.REPORT_CHANNEL_ID and interaction.channel_id != config.REPORT_CHANNEL_ID:
-        await interaction.response.send_message(
-            f"Please report games in <#{config.REPORT_CHANNEL_ID}>.", ephemeral=True)
-        return
     if enemy.id == interaction.user.id:
         await interaction.response.send_message(
             "You can't report a game against yourself.", ephemeral=True)
@@ -348,19 +368,22 @@ async def on_raw_reaction_add(payload):
 # --------------------------------------------------------------------------
 async def build_leaderboard_images(tag):
     """Render the ladder as an ordered list of image paths:
-    [header, rows 1-4, rows 5-8, rows 9-12, faction table].
+    [header, rows 1-4, rows 5-8, rows 9-12, rows 13-16, faction table].
     Discord caps image height, so the rows are split into chunks of 4 and each
     chunk is its own image (posted as separate stacked messages)."""
     d = config.PREVIEW_DIR
     paths = [await renderer.render_header_async(os.path.join(d, f"lb_{tag}_header.jpg"))]
 
-    players = db.top_players(12)
+    players = db.top_players(16)
     if players:
         async with aiohttp.ClientSession() as session:
             avatars = {p["user_id"]: await get_avatar(session, p["user_id"])
                        for p in players}
+        names = {p["user_id"]: await get_display_name(p["user_id"]) for p in players}
         entries = model.build_entries(
-            players, avatar_resolver=lambda uid: avatars.get(uid))
+            players,
+            avatar_resolver=lambda uid: avatars.get(uid),
+            name_resolver=lambda uid: names.get(uid))
         for i in range(0, len(entries), 4):
             n = i // 4 + 1
             out = os.path.join(d, f"lb_{tag}_chunk{n}.jpg")
@@ -381,7 +404,8 @@ async def publish_leaderboard():
     messages in the leaderboard channel, replacing the bot's previous set."""
     if not config.LEADERBOARD_CHANNEL_ID:
         return
-    channel = client.get_channel(config.LEADERBOARD_CHANNEL_ID)
+    channel = client.get_channel(config.LEADERBOARD_CHANNEL_ID) or \
+        await client.fetch_channel(config.LEADERBOARD_CHANNEL_ID)
     if channel is None:
         return
     async with _leaderboard_lock:

@@ -11,9 +11,9 @@ from config import PREVIEW_DIR, ELO_K
 from cards import model, svg_renderer as renderer
 
 SAMPLE_PLAYERS = [
-    {"user_id": "1", "name": "Markal",     "elo": 1672, "wins": 41, "losses": 9,  "streak": 7},
-    {"user_id": "2", "name": "Zehir",      "elo": 1540, "wins": 33, "losses": 14, "streak": 3},
-    {"user_id": "3", "name": "Findan",     "elo": 1488, "wins": 28, "losses": 16, "streak": 1},
+    {"user_id": "1", "name": "𝕲𝖗𝖞𝖜",       "elo": 1672, "wins": 41, "losses": 9,  "streak": 7},
+    {"user_id": "2", "name": "中文",        "elo": 1540, "wins": 33, "losses": 14, "streak": 3},
+    {"user_id": "3", "name": "Maрkal",     "elo": 1488, "wins": 28, "losses": 16, "streak": 1},
     {"user_id": "4", "name": "Isabel",     "elo": 1330, "wins": 22, "losses": 18, "streak": 0},
     {"user_id": "5", "name": "Raelag",     "elo": 1275, "wins": 19, "losses": 17, "streak": -2},
     {"user_id": "6", "name": "Kujin",      "elo": 1180, "wins": 15, "losses": 15, "streak": 2},

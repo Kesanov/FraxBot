@@ -64,7 +64,7 @@ Edit [config.py](config.py):
 
 ```powershell
 $env:DISCORD_TOKEN = "your-bot-token"
-$env:REPORT_CHANNEL_ID = "123456789012345678"        # where players run /defeated
+$env:REPORTS_CHANNEL_ID = "123456789012345678"       # where result cards are posted
 $env:LEADERBOARD_CHANNEL_ID = "987654321098765432"   # where the ladder is auto-posted
 python main.py
 ```
@@ -74,8 +74,7 @@ it's loaded automatically (and `.env` is gitignored). On real hosts, set actual
 environment variables rather than shipping a `.env`.
 
 Two channels:
-- **Report channel** (`REPORT_CHANNEL_ID`) — where players run `/game`. If unset,
-  `/game` works in any channel.
+- **Reports channel** (`REPORTS_CHANNEL_ID`) — where result cards are posted. Required.
 - **Leaderboard channel** (`LEADERBOARD_CHANNEL_ID`) — only the auto-updating
   ladder card lives here.
 

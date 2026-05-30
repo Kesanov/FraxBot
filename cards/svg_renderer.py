@@ -12,7 +12,7 @@ import asyncio
 import html as _html
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import FACTION_COLORS  # noqa: E402
+from config import FACTION_COLORS, faction_base, faction_emoji  # noqa: E402
 from cards.model import _latinize
 
 W = 1040
@@ -50,13 +50,13 @@ _CELL_STROKE_OPACITY = 0.8
 
 # Very dim, per-rank accent colors for the rank label under each name.
 RANK_COLORS = {
-    "Champion": "#d9b44a",
-    "Renegade": "#c98a6b",
-    "Inquisitor": "#9fb0d0",
-    "Paladin": "#a98fc0",
-    "Knight": "#8fa0b0",
-    "Squire": "#9a9a86",
-    "Peasant": "#8a8a8a",
+    "Champion": "#9c1d1d",
+    "Renegade": "#c56d42",
+    "Inquisitor": "#8133a0",
+    "Paladin": "#44a0ac",
+    "Knight": "#5b8ebd",
+    "Squire": "#68c7a7",
+    "LandLord": "#629c62",
 }
 
 
@@ -157,7 +157,7 @@ def render_rows(entries, out_path, scale=2):
         name_col = pc if pos in pos_color else "#f2eefc"
         parts.append(
             f'<text x="{name_x}" y="{cy-2}" font-size="30" font-weight="700" '
-            f'fill="{name_col}">{_esc(e["name"])}</text>'
+            f'fill="{name_col}">{_esc(e["name"][:21])}</text>'
             f'<text x="{name_x}" y="{cy+26}" font-size="19" font-weight="700" '
             f'fill="{RANK_COLORS.get(e["rank"], "#9a90c0")}">{_esc(e["rank"])}</text>'
         )
@@ -256,18 +256,20 @@ def render_result(winner, loser, delta, out_path,
     pad = 12
     height = pad * 2 + row_h * 2
 
-    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#6800BD"  # gold / dark purple
+    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#9045CE"  # gold / dark purple
 
     def row(y, p, avatar, border_col, emoji, elo_delta):
         avatar = avatar or default_avatar(p["name"])
-        p = {**p, "name": _latinize(p["name"]), "faction": _latinize(p["faction"]), "ultimate": _latinize(p["ultimate"])}
-        faction_col = FACTION_COLORS.get(p["faction"], "#90a4ae")
+        faction_col = FACTION_COLORS.get(faction_base(p["faction"]), "#90a4ae")
+        cls_emoji = faction_emoji(p["faction"])
+        p = {**p, "name": _latinize(p["name"]), "ultimate": _latinize(p["ultimate"])}
         cy = y + row_h // 2
         acx, ar = 88, 46
         lx = 210
-        rx = width - 150
+        ex = width - 160   # class emoji column
+        rx = width - 80    # elo column
         cid = f"clip_{y}"
-        info = f'{_esc(p["faction"])}  ·  {_esc(p["ultimate"])}'
+        info = f'{_esc(faction_base(p["faction"]))}  ·  {_esc(p["ultimate"])}'
         return (
             f'<rect x="20" y="{y}" width="{width-40}" height="{row_h-12}" rx="18" '
             f'{_CELL_FILL} stroke="{border_col}" '
@@ -278,9 +280,11 @@ def render_result(winner, loser, delta, out_path,
             f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>'
             f'<text x="140" y="{cy+15}" font-size="44" font-weight="700" font-family="{_EMOJI_FAMILY}" text-anchor="middle">{emoji}</text>'
             f'<text x="{lx}" y="{cy-8}" font-size="34" font-weight="700" '
-            f'fill="#f2eefc">{_esc(p["name"])}</text>'
+            f'fill="#f2eefc">{_esc(p["name"][:30])}</text>'
             f'<text x="{lx}" y="{cy+28}" font-size="23" font-weight="700" '
             f'fill="{faction_col}">{info}</text>'
+            f'<text x="{ex}" y="{cy+10}" font-size="35" font-weight="700" font-family="{_EMOJI_FAMILY}" '
+            f'text-anchor="middle">{_esc(cls_emoji)}</text>'
             f'<text x="{rx}" y="{cy-2}" font-size="42" font-weight="700" '
             f'fill="#f2eefc" text-anchor="middle">{p["elo"]}</text>'
             f'<text x="{rx}" y="{cy+30}" font-size="24" font-weight="700" '

@@ -18,10 +18,11 @@ from config import rank_title  # noqa: E402
 MEDALS = {1: "#ffd54f", 2: "#cfd8dc", 3: "#cd7f32"}
 
 
-def build_entries(players, avatar_resolver=None):
+def build_entries(players, avatar_resolver=None, name_resolver=None):
     """players: list of dicts (from db.top_players).
 
     avatar_resolver(user_id) -> str (data URI / URL / file path) or None.
+    name_resolver(user_id) -> str or None (falls back to DB name).
     Returns list of dicts ready for templates.
     """
     entries = []
@@ -29,10 +30,11 @@ def build_entries(players, avatar_resolver=None):
         games = p["wins"] + p["losses"]
         winrate = round(100 * p["wins"] / games) if games else 0
         avatar = avatar_resolver(p["user_id"]) if avatar_resolver else None
+        name = (name_resolver(p["user_id"]) if name_resolver else None) or p["name"]
         entries.append(
             {
                 "position": i,
-                "name": _latinize(p["name"]),
+                "name": _latinize(name),
                 "elo": p["elo"],
                 "rank": rank_title(p["elo"]),
                 "wins": p["wins"],
@@ -40,7 +42,7 @@ def build_entries(players, avatar_resolver=None):
                 "games": games,
                 "winrate": winrate,
                 "streak": streak_label(p.get("streak", 0)),
-                "avatar": avatar or default_avatar(p["name"]),
+                "avatar": avatar or default_avatar(name),
                 "medal": MEDALS.get(i),
             }
         )
