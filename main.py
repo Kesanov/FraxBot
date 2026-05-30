@@ -16,6 +16,7 @@ Flow:
 
 import asyncio
 import base64
+import hashlib
 import os
 import time
 import traceback
@@ -31,6 +32,7 @@ from cards import model
 from cards import svg_renderer as renderer
 
 CONFIRM_EMOJI = "👍"
+DENY_EMOJI = "👎"
 
 # Default (non-privileged) intents are enough: slash commands resolve Member
 # objects directly, reactions are in the default set, and avatars come via REST.
@@ -71,6 +73,13 @@ PENDING: dict[int, PendingGame] = {}
 
 # Serializes leaderboard updates so the timer and post-game refresh can't race.
 _leaderboard_lock = asyncio.Lock()
+
+# Path to the pre-rendered header image (set once at startup, reused every refresh).
+_cached_header_path: str | None = None
+
+# Chunk render cache: chunk_hash -> file path. Avoids re-rasterizing rows whose
+# player data (elo/wins/losses/streak) hasn't changed since the last refresh.
+_chunk_cache: dict[str, str] = {}
 
 # Drop pending games the enemy never confirmed after this many seconds.
 PENDING_TTL = 24 * 3600
@@ -157,7 +166,10 @@ class FactionSelect(discord.ui.Select):
         self.side = side  # "winner" or "loser"
         player = view.game.winner if side == "winner" else view.game.loser
         options = [
-            discord.SelectOption(label=f"{f}: {c}", value=f"{f}: {c}")
+            discord.SelectOption(
+                label=f"{f}: {c}",
+                value=f"{f}: {c}",
+                emoji=config.FACTION_EMOJI.get(f))
             for f in config.FACTIONS
             for c in config.CLASSES
         ]
@@ -216,11 +228,13 @@ class PickerView(discord.ui.View):
 
         # In test mode the match is recorded immediately (no confirmation).
         if config.TEST_MODE:
+            before = _top16_ids()
             res = db.record_match(
                 (g.winner.id, g.winner.display_name),
                 (g.loser.id, g.loser.display_name),
                 g.factions["winner"], g.ultimates["winner"],
                 g.factions["loser"], g.ultimates["loser"])
+            after = _top16_ids()
         else:
             res = db.preview_match(g.winner.id, g.loser.id)
 
@@ -265,10 +279,12 @@ class PickerView(discord.ui.View):
         self.stop()
 
         if config.TEST_MODE:
-            try:
-                await publish_leaderboard()
-            except Exception:
-                traceback.print_exc()
+            players = {str(g.winner.id), str(g.loser.id)}
+            if not players.isdisjoint(before | after):
+                try:
+                    await publish_leaderboard()
+                except Exception:
+                    traceback.print_exc()
             return
 
         g.message = msg
@@ -277,10 +293,11 @@ class PickerView(discord.ui.View):
         g.timeout_task = asyncio.create_task(_expire_game(g))
         try:
             await msg.add_reaction(CONFIRM_EMOJI)
+            await msg.add_reaction(DENY_EMOJI)
         except discord.Forbidden:
             await interaction.followup.send(
                 f"Posted the result, but I'm missing the **Add Reactions** permission, so "
-                f"I couldn't add the {CONFIRM_EMOJI}. {g.loser.display_name} can still add "
+                f"I couldn't add the {CONFIRM_EMOJI}/{DENY_EMOJI}. {g.loser.display_name} can still add "
                 f"it manually to confirm.", ephemeral=True)
         except discord.HTTPException:
             pass
@@ -307,6 +324,23 @@ async def _expire_game(game: PendingGame):
         pass
 
 
+async def deny_game(game: PendingGame):
+    if game.done:
+        return
+    game.done = True
+    if game.timeout_task:
+        game.timeout_task.cancel()
+    PENDING.pop(game.message.id, None)
+    try:
+        await game.message.delete()
+    except discord.HTTPException:
+        pass
+
+
+def _top16_ids() -> set:
+    return {p["user_id"] for p in db.top_players(16)}
+
+
 async def confirm_game(game: PendingGame):
     if game.done:
         return
@@ -314,23 +348,25 @@ async def confirm_game(game: PendingGame):
     if game.timeout_task:
         game.timeout_task.cancel()
     w, l = game.winner, game.loser
+    before = _top16_ids()
     res = db.record_match(
         (w.id, w.display_name), (l.id, l.display_name),
         game.factions["winner"], game.ultimates["winner"],
         game.factions["loser"], game.ultimates["loser"],
     )
+    after = _top16_ids()
     PENDING.pop(game.message.id, None)
     try:
         await game.message.edit(
-            content=f"✅ Confirmed — **{w.display_name}** defeated **{l.display_name}** "
-                    f"({'+' if res['delta'] >= 0 else ''}{res['delta']} ELO).")
+            content=f"✅ The match has been confirmed.")
     except discord.HTTPException:
         pass
-    # Refresh the leaderboard; don't let a failure here undo the recorded result.
-    try:
-        await publish_leaderboard()
-    except Exception:
-        traceback.print_exc()
+    players = {str(w.id), str(l.id)}
+    if not players.isdisjoint(before | after):
+        try:
+            await publish_leaderboard()
+        except Exception:
+            traceback.print_exc()
 
 
 async def defeated(interaction, enemy: discord.Member):
@@ -353,26 +389,40 @@ async def defeated(interaction, enemy: discord.Member):
 async def on_raw_reaction_add(payload):
     if payload.user_id == client.user.id:
         return
-    if str(payload.emoji) != CONFIRM_EMOJI:
-        return
     game = PENDING.get(payload.message_id)
     if game is None:
         return
-    if payload.user_id != game.loser.id:
-        return
-    await confirm_game(game)
+    emoji = str(payload.emoji)
+    if emoji == CONFIRM_EMOJI:
+        if payload.user_id != game.loser.id:
+            return
+        await confirm_game(game)
+    elif emoji == DENY_EMOJI:
+        if payload.user_id not in (game.winner.id, game.loser.id):
+            return
+        await deny_game(game)
 
 
 # --------------------------------------------------------------------------
 # leaderboard rendering
 # --------------------------------------------------------------------------
+async def _prerender_header():
+    global _cached_header_path
+    path = os.path.join(config.PREVIEW_DIR, "lb_header_cached.webp")
+    _cached_header_path = await renderer.render_header_async(path)
+
+
 async def build_leaderboard_images(tag):
     """Render the ladder as an ordered list of image paths:
     [header, rows 1-4, rows 5-8, rows 9-12, rows 13-16, faction table].
     Discord caps image height, so the rows are split into chunks of 4 and each
     chunk is its own image (posted as separate stacked messages)."""
     d = config.PREVIEW_DIR
-    paths = [await renderer.render_header_async(os.path.join(d, f"lb_{tag}_header.jpg"))]
+    if _cached_header_path and os.path.exists(_cached_header_path):
+        header_path = _cached_header_path
+    else:
+        header_path = await renderer.render_header_async(os.path.join(d, f"lb_{tag}_header.jpg"))
+    paths = [header_path]
 
     players = db.top_players(16)
     if players:
@@ -385,14 +435,28 @@ async def build_leaderboard_images(tag):
             avatar_resolver=lambda uid: avatars.get(uid),
             name_resolver=lambda uid: names.get(uid))
         for i in range(0, len(entries), 4):
-            n = i // 4 + 1
-            out = os.path.join(d, f"lb_{tag}_chunk{n}.jpg")
-            paths.append(await renderer.render_rows_async(entries[i:i + 4], out))
+            chunk = players[i:i + 4]
+            key = hashlib.md5(
+                str([(p["user_id"], p["elo"], p["wins"], p["losses"], p.get("streak", 0))
+                     for p in chunk]).encode()
+            ).hexdigest()
+            cached = _chunk_cache.get(key)
+            if cached and os.path.exists(cached):
+                paths.append(cached)
+                continue
+            out = os.path.join(d, f"lb_chunk_{key}.webp")
+            path = await renderer.render_rows_async(entries[i:i + 4], out)
+            _chunk_cache[key] = path
+            paths.append(path)
+            await asyncio.sleep(0.3)
     return paths
 
 
 def _cleanup(paths):
+    cached = set(_chunk_cache.values())
     for p in paths:
+        if p == _cached_header_path or p in cached:
+            continue
         try:
             os.remove(p)
         except OSError:
@@ -454,6 +518,10 @@ async def on_ready():
         await tree.sync(guild=guild)
     tree.clear_commands(guild=None)
     await tree.sync()
+    try:
+        await _prerender_header()
+    except Exception:
+        traceback.print_exc()
     try:
         await publish_leaderboard()
     except Exception:

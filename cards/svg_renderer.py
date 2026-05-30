@@ -80,7 +80,7 @@ def _rasterize_webp(svg: str, webp_path: str, scale: float = 2) -> bool:
             font_family=_FONT_FAMILY,
         ))
         img = Image.open(io.BytesIO(png)).convert("RGBA")
-        img.save(webp_path, "WEBP", quality=92, method=6)
+        img.save(webp_path, "WEBP", quality=78, method=6)
         return True
     except Exception:
         return False
@@ -98,11 +98,12 @@ def _save(svg: str, out_path: str, scale: float = 2):
     return svg_path
 
 
-def render_header(out_path, title="Frax Arena Top12", scale=2):
+def render_header(out_path, title="Frax Arena Top12", scale=1):
     h = 152
+    out_w, out_h = 800, h * 800 // W
     svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{h}" '
-        f'font-family="{_FONT_FAMILY}">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
+        f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">'
         + _lux_bg()
         + f'<rect x="20" y="16" width="{W-40}" height="{h-32}" rx="22" '
           f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W*2}"/>'
@@ -117,15 +118,17 @@ def render_header(out_path, title="Frax Arena Top12", scale=2):
     return _save(svg, out_path, scale)
 
 
-def render_rows(entries, out_path, scale=2):
+def render_rows(entries, out_path, scale=1):
     """Render a chunk of leaderboard rows (no header). `entries` keep their
     global `position`. Small labels are enlarged and bold for readability."""
-    row_h = 92
-    pad = 10
+    row_h = 95
+    pad = 5
     height = pad * 2 + row_h * len(entries)
+    out_w = 800
+    out_h = height * out_w // W
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" '
-        f'font-family="{_FONT_FAMILY}">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
+        f'viewBox="0 0 {W} {height}" font-family="{_FONT_FAMILY}">',
 
         _lux_bg(),
     ]
@@ -164,7 +167,7 @@ def render_rows(entries, out_path, scale=2):
         if pos in (1, 2, 3):
             medal = {1: "🥇", 2: "🥈", 3: "🥉"}[pos]
             parts.append(
-                f'<text x="186" y="{cy+38}" font-size="30" font-weight="700" '
+                f'<text x="186" y="{cy+38}" font-size="39" font-weight="700" '
                 f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{medal}</text>'
             )
         cols = [
@@ -204,14 +207,16 @@ def render_rows(entries, out_path, scale=2):
     return _save("".join(parts), out_path, scale)
 
 
-def render_faction_table(rows, out_path, title="Faction Winrate", scale=2):
+def render_faction_table(rows, out_path, title="Faction Winrate", scale=1):
     title_h = 64
     row_h = 64
     pad = 10
     height = title_h + row_h * len(rows) + pad
+    out_w = 800
+    out_h = height * out_w // W
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" '
-        f'font-family="{_FONT_FAMILY}">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
+        f'viewBox="0 0 {W} {height}" font-family="{_FONT_FAMILY}">',
         f'<rect width="{W}" height="{height}" fill="#14101f"/>',
         f'<text x="40" y="46" font-size="34" font-weight="700" fill="#ffd54f">'
         f'{_esc(title)}</text>',
@@ -246,7 +251,7 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=2):
 
 
 def render_result(winner, loser, delta, out_path,
-                  winner_avatar=None, loser_avatar=None, scale=2):
+                  winner_avatar=None, loser_avatar=None, scale=1):
     """Two stacked rows: winner on top, loser below. Faction + ultimate share a
     line; emoji badges replace VICTORY/DEFEAT text."""
     from cards.model import default_avatar
@@ -255,6 +260,7 @@ def render_result(winner, loser, delta, out_path,
     row_h = 124
     pad = 12
     height = pad * 2 + row_h * 2
+    out_w, out_h = 800, height * 800 // width
 
     WIN_BORDER, LOSE_BORDER = "#ffd54f", "#9045CE"  # gold / dark purple
 
@@ -293,8 +299,8 @@ def render_result(winner, loser, delta, out_path,
         )
 
     svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'font-family="{_FONT_FAMILY}">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
+        f'viewBox="0 0 {width} {height}" font-family="{_FONT_FAMILY}">'
         + _lux_bg()
         + row(pad, winner, winner_avatar, WIN_BORDER, "🏆", delta)
         + row(pad + row_h, loser, loser_avatar, LOSE_BORDER, "💀", -delta)

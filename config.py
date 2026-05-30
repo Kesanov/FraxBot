@@ -58,12 +58,23 @@ FACTIONS = [
     "Stronghold",
 ]
 
-CLASSES = ["Warrior", "Shaman", "Wizard"]
+CLASSES = ["Warrior", "Warmage", "Warlock"]
 
 CLASS_EMOJI = {
     "Warrior": "🛡️",
-    "Shaman":  "🔱",
-    "Wizard":  "🔮",
+    "Warmage": "🔱",
+    "Warlock": "🔮",
+}
+
+FACTION_EMOJI = {
+    "Haven":       "⛪",
+    "Sylvan":      "🌿",
+    "Academy":     "⚡",
+    "Dungeon":     "🦇",
+    "Necropolis":  "💀",
+    "Inferno":     "🔥",
+    "Fortress":    "🏔️",
+    "Stronghold":  "🪃",
 }
 
 
@@ -94,10 +105,10 @@ ULTIMATES = [
     "Forgotten Witchcraft",
     "Frax Essence",
     "Mithral Plating",
-    "Runic Excelence",
     "Undying Thirst",
-    "Nature's Luck",
+    "Runic Excelence",
     "Runic Protection",
+    "Nature's Luck",
     "Absolute Empathy",
     "Might over Magic",
     "Arcane Omniscience",
