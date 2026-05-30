@@ -38,12 +38,12 @@ ELO_K = 96  # large K -> bigger, more exciting rating swings per game
 
 # --- Paths -----------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_PATH = os.path.join(DATA_DIR, "elo_test.sqlite3" if TEST_MODE else "elo.sqlite3")
-PREVIEW_DIR = os.path.join(BASE_DIR, "preview_output")
+DATA_DIR = os.path.join(BASE_DIR, "data")    # fonts, static assets (committed)
+CACHE_DIR = os.path.join(BASE_DIR, "cache")  # DB, rendered images (gitignored)
+DB_PATH = os.path.join(CACHE_DIR, "elo_test.sqlite3" if TEST_MODE else "elo.sqlite3")
+PREVIEW_DIR = CACHE_DIR
 
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(PREVIEW_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 # --- Game data -------------------------------------------------------------
 # The 8 standard factions. Order here = order shown in the dropdown.
@@ -124,8 +124,8 @@ FACTION_COLORS = {
     "Dungeon":    "#7b1fa2",
     "Necropolis": "#607d8b",
     "Inferno":    "#e53935",
-    "Fortress":   "#795548",
-    "Stronghold": "#ef6c00",
+    "Fortress":   "#94FFFA",
+    "Stronghold": "#924302",
 }
 
 

@@ -17,7 +17,7 @@ from cards.model import _latinize
 
 W = 1040
 
-_FONT_DIR = os.path.dirname(__file__)
+_FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 _FONT_FILES = [
     ("Crimson Pro",      "400", "normal", "CrimsonPro-Regular.ttf"),
     ("Crimson Pro",      "700", "normal", "CrimsonPro-Bold.ttf"),
@@ -67,8 +67,7 @@ _FONT_PATHS = [
 ]
 
 
-def _rasterize_webp(svg: str, webp_path: str, scale: float = 2) -> bool:
-    """Rasterize SVG -> WebP via resvg. True on success."""
+def _save(svg: str, out_path: str, scale: float = 2):
     try:
         import io
         import resvg_py
@@ -80,19 +79,13 @@ def _rasterize_webp(svg: str, webp_path: str, scale: float = 2) -> bool:
             font_family=_FONT_FAMILY,
         ))
         img = Image.open(io.BytesIO(png)).convert("RGBA")
+        webp_path = os.path.splitext(out_path)[0] + ".webp"
         img.save(webp_path, "WEBP", quality=78, method=6)
-        return True
-    except Exception:
-        return False
-
-
-def _save(svg: str, out_path: str, scale: float = 2):
-    base, _ = os.path.splitext(out_path)
-    webp_path = base + ".webp"
-    if _rasterize_webp(svg, webp_path, scale):
         return webp_path
+    except Exception:
+        pass
     # rasterizer unavailable: fall back to writing the raw .svg
-    svg_path = base + ".svg"
+    svg_path = os.path.splitext(out_path)[0] + ".svg"
     with open(svg_path, "w", encoding="utf-8") as f:
         f.write(svg)
     return svg_path
@@ -382,6 +375,7 @@ async def render_header_async(out_path, title="Frax Arena Leaderboard"):
 
 async def render_rows_async(entries, out_path):
     return await asyncio.to_thread(render_rows, entries, out_path)
+
 
 
 async def render_faction_table_async(rows, out_path):

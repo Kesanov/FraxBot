@@ -77,9 +77,9 @@ _leaderboard_lock = asyncio.Lock()
 # Path to the pre-rendered header image (set once at startup, reused every refresh).
 _cached_header_path: str | None = None
 
-# Chunk render cache: chunk_hash -> file path. Avoids re-rasterizing rows whose
-# player data (elo/wins/losses/streak) hasn't changed since the last refresh.
-_chunk_cache: dict[str, str] = {}
+# Chunk render cache: chunk_index -> last_hash. Files are named lb_chunk_{i}.webp
+# so there is always exactly one file per leaderboard position.
+_chunk_cache: dict[int, str] = {}
 
 # Drop pending games the enemy never confirmed after this many seconds.
 PENDING_TTL = 24 * 3600
@@ -436,26 +436,26 @@ async def build_leaderboard_images(tag):
             name_resolver=lambda uid: names.get(uid))
         for i in range(0, len(entries), 4):
             chunk = players[i:i + 4]
+            n = i // 4
             key = hashlib.md5(
                 str([(p["user_id"], p["elo"], p["wins"], p["losses"], p.get("streak", 0))
                      for p in chunk]).encode()
             ).hexdigest()
-            cached = _chunk_cache.get(key)
-            if cached and os.path.exists(cached):
-                paths.append(cached)
+            out = os.path.join(d, f"lb_chunk_{n}.webp")
+            if _chunk_cache.get(n) == key and os.path.exists(out):
+                paths.append(out)
                 continue
-            out = os.path.join(d, f"lb_chunk_{key}.webp")
             path = await renderer.render_rows_async(entries[i:i + 4], out)
-            _chunk_cache[key] = path
+            _chunk_cache[n] = key
             paths.append(path)
             await asyncio.sleep(0.3)
     return paths
 
 
 def _cleanup(paths):
-    cached = set(_chunk_cache.values())
     for p in paths:
-        if p == _cached_header_path or p in cached:
+        if p == _cached_header_path or p.startswith(
+                os.path.join(config.PREVIEW_DIR, "lb_chunk_")):
             continue
         try:
             os.remove(p)
