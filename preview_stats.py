@@ -105,7 +105,7 @@ def main():
     renders = [
         ("h1_ult",   lambda: renderer.render_stats_header_img("Ultimate Winrate",  _out("h1_ult"))),
         ("s1_ult",   lambda: renderer.render_ult_section_img(ult_rows, frax_rows,  _out("s1_ult"))),
-        ("h2_fac",   lambda: renderer.render_stats_header_img("Faction Stats",      _out("h2_fac"))),
+        ("h2_fac",   lambda: renderer.render_stats_header_img("Faction Winrate",      _out("h2_fac"))),
         ("s2_fac",   lambda: renderer.render_faction_section_img(fac_rows, fc_rows, _out("s2_fac"))),
         ("h3_cls",   lambda: renderer.render_stats_header_img("Class Winrate",      _out("h3_cls"))),
         ("s3_cls",   lambda: renderer.render_class_section_img(cls_rows, _out("s3_cls"))),

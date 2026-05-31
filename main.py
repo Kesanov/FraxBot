@@ -538,7 +538,7 @@ async def publish_winrate_stats():
     s1 = await loop.run_in_executor(None, renderer.render_ult_section_img,
                                     ult_rows, frax_rows, os.path.join(d, "stats_s1.webp"))
     await asyncio.sleep(2)
-    h2 = await _render_stats_header("Faction Stats")
+    h2 = await _render_stats_header("Faction Winrate")
     s2 = await loop.run_in_executor(None, renderer.render_faction_section_img,
                                     fac_rows, fc_rows, os.path.join(d, "stats_s2.webp"))
     await asyncio.sleep(2)
