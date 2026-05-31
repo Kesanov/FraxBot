@@ -32,6 +32,9 @@ LEADERBOARD_CHANNEL_ID = int(os.environ.get("LEADERBOARD_CHANNEL_ID", "0"))
 # Channel where rendered result cards are posted. Required.
 REPORTS_CHANNEL_ID = int(os.environ.get("REPORTS_CHANNEL_ID", "0"))
 
+# Channel where the daily winrate stats cards are posted.
+WINRATE_CHANNEL_ID = int(os.environ.get("WINRATE_CHANNEL_ID", "0"))
+
 # --- ELO -------------------------------------------------------------------
 ELO_START = 1000
 ELO_K = 60  # even match = ±30 pts

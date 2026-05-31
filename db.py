@@ -134,3 +134,91 @@ def faction_stats():
                     "winrate": round(100 * w / g) if g else 0})
     out.sort(key=lambda r: (r["winrate"], r["games"]), reverse=True)
     return out
+
+
+def ultimate_stats():
+    """Global per-ultimate record, sorted by popularity (games desc)."""
+    from config import ULTIMATES
+    with _conn() as con:
+        wins = dict(con.execute(
+            "SELECT winner_ultimate, COUNT(*) FROM matches GROUP BY winner_ultimate"
+        ).fetchall())
+        losses = dict(con.execute(
+            "SELECT loser_ultimate, COUNT(*) FROM matches GROUP BY loser_ultimate"
+        ).fetchall())
+    out = []
+    for u in ULTIMATES:
+        w, l = wins.get(u, 0), losses.get(u, 0)
+        g = w + l
+        out.append({"ultimate": u, "wins": w, "losses": l, "games": g,
+                    "winrate": round(100 * w / g) if g else 0})
+    out.sort(key=lambda r: r["games"], reverse=True)
+    return out
+
+
+def frax_by_faction():
+    """Frax Essence winrate broken down by faction, in FACTIONS order."""
+    with _conn() as con:
+        wins = dict(con.execute(
+            "SELECT winner_faction, COUNT(*) FROM matches "
+            "WHERE winner_ultimate='Frax Essence' GROUP BY winner_faction"
+        ).fetchall())
+        losses = dict(con.execute(
+            "SELECT loser_faction, COUNT(*) FROM matches "
+            "WHERE loser_ultimate='Frax Essence' GROUP BY loser_faction"
+        ).fetchall())
+    out = []
+    for f in FACTIONS:
+        w, l = wins.get(f, 0), losses.get(f, 0)
+        g = w + l
+        out.append({"faction": f, "wins": w, "losses": l, "games": g,
+                    "winrate": round(100 * w / g) if g else 0})
+    return out
+
+
+def faction_class_stats():
+    """WR for each (faction, class) pair. Returns {faction: [cls0, cls1, cls2]}."""
+    with _conn() as con:
+        wins = {}
+        for f, ci, cnt in con.execute(
+            "SELECT winner_faction, winner_class, COUNT(*) FROM matches "
+            "WHERE winner_faction IS NOT NULL AND winner_class IS NOT NULL "
+            "GROUP BY winner_faction, winner_class"
+        ):
+            wins[(f, ci)] = cnt
+        losses = {}
+        for f, ci, cnt in con.execute(
+            "SELECT loser_faction, loser_class, COUNT(*) FROM matches "
+            "WHERE loser_faction IS NOT NULL AND loser_class IS NOT NULL "
+            "GROUP BY loser_faction, loser_class"
+        ):
+            losses[(f, ci)] = cnt
+    out = {}
+    for f in FACTIONS:
+        row = []
+        for i, _ in enumerate(CLASSES):
+            w = wins.get((f, i), 0)
+            l = losses.get((f, i), 0)
+            g = w + l
+            row.append({"wins": w, "losses": l, "games": g,
+                        "winrate": round(100 * w / g) if g else 0})
+        out[f] = row
+    return out
+
+
+def class_stats():
+    """Global per-class record (Warrior/Warmage/Warlock), original order."""
+    with _conn() as con:
+        wins = dict(con.execute(
+            "SELECT winner_class, COUNT(*) FROM matches GROUP BY winner_class"
+        ).fetchall())
+        losses = dict(con.execute(
+            "SELECT loser_class, COUNT(*) FROM matches GROUP BY loser_class"
+        ).fetchall())
+    out = []
+    for i, c in enumerate(CLASSES):
+        w, l = wins.get(i, 0), losses.get(i, 0)
+        g = w + l
+        out.append({"class": c, "wins": w, "losses": l, "games": g,
+                    "winrate": round(100 * w / g) if g else 0})
+    return out

@@ -4,6 +4,7 @@ Run:
     $env:DISCORD_TOKEN = "..."
     $env:REPORTS_CHANNEL_ID = "..."        # where result cards are posted
     $env:LEADERBOARD_CHANNEL_ID = "..."   # where the ladder is auto-posted
+    $env:WINRATE_CHANNEL_ID = "..."       # where daily stats cards are posted
     python main.py
 
 Flow:
@@ -498,6 +499,66 @@ async def publish_leaderboard():
         _cleanup(paths)
 
 
+async def publish_winrate_stats():
+    """Post (or repost) the 6 stats card images into the winrate channel."""
+    if not config.WINRATE_CHANNEL_ID:
+        return
+    channel = client.get_channel(config.WINRATE_CHANNEL_ID) or \
+        await client.fetch_channel(config.WINRATE_CHANNEL_ID)
+    if channel is None:
+        return
+
+    ult_rows  = db.ultimate_stats()
+    fac_rows  = db.faction_stats()
+    cls_rows  = db.class_stats()
+    frax_rows = db.frax_by_faction()
+    fc_rows   = db.faction_class_stats()
+
+    d = config.CACHE_DIR
+    renders = [
+        ("h1", lambda: renderer.render_stats_header_img(
+            "Ultimate Winrate", os.path.join(d, "stats_h1.webp"))),
+        ("s1", lambda: renderer.render_ult_section_img(
+            ult_rows, frax_rows, os.path.join(d, "stats_s1.webp"))),
+        ("h2", lambda: renderer.render_stats_header_img(
+            "Faction Stats", os.path.join(d, "stats_h2.webp"))),
+        ("s2", lambda: renderer.render_faction_section_img(
+            fac_rows, fc_rows, os.path.join(d, "stats_s2.webp"))),
+        ("h3", lambda: renderer.render_stats_header_img(
+            "Class Winrate", os.path.join(d, "stats_h3.webp"))),
+        ("s3", lambda: renderer.render_class_section_img(
+            cls_rows, os.path.join(d, "stats_s3.webp"))),
+    ]
+
+    paths = []
+    loop = asyncio.get_event_loop()
+    for _, fn in renders:
+        path = await loop.run_in_executor(None, fn)
+        paths.append(path)
+
+    # delete the bot's previous stats messages before reposting
+    async for msg in channel.history(limit=20):
+        if msg.author.id == client.user.id:
+            try:
+                await msg.delete()
+            except discord.HTTPException:
+                pass
+
+    for path in paths:
+        await channel.send(file=discord.File(path))
+
+
+async def _winrate_daily_loop():
+    """Repost stats cards once every 24 hours."""
+    await asyncio.sleep(24 * 3600)
+    while True:
+        try:
+            await publish_winrate_stats()
+        except Exception:
+            traceback.print_exc()
+        await asyncio.sleep(24 * 3600)
+
+
 async def elo_cmd(interaction, player: discord.Member):
     p = db.get_player(player.id)
     if p is None:
@@ -538,6 +599,11 @@ async def on_ready():
         await publish_leaderboard()
     except Exception:
         traceback.print_exc()
+    try:
+        await publish_winrate_stats()
+    except Exception:
+        traceback.print_exc()
+    asyncio.create_task(_winrate_daily_loop())
     mode = " [TEST MODE — no confirmation, test DB]" if config.TEST_MODE else ""
     print(f"Logged in as {client.user} ({client.user.id}){mode}")
 
