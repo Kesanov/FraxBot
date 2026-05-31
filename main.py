@@ -34,6 +34,13 @@ from cards import svg_renderer as renderer
 CONFIRM_EMOJI = "👍"
 DENY_EMOJI = "👎"
 
+
+def _split_faction_class(combined: str | None) -> tuple[str | None, str | None]:
+    if combined and ": " in combined:
+        f, c = combined.split(": ", 1)
+        return f, c
+    return combined, None
+
 # Default (non-privileged) intents are enough: slash commands resolve Member
 # objects directly, reactions are in the default set, and avatars come via REST.
 intents = discord.Intents.default()
@@ -229,11 +236,12 @@ class PickerView(discord.ui.View):
         # In test mode the match is recorded immediately (no confirmation).
         if config.TEST_MODE:
             before = _top16_ids()
+            wf, wc = _split_faction_class(g.factions["winner"])
+            lf, lc = _split_faction_class(g.factions["loser"])
             res = db.record_match(
-                (g.winner.id, g.winner.display_name),
-                (g.loser.id, g.loser.display_name),
-                g.factions["winner"], g.ultimates["winner"],
-                g.factions["loser"], g.ultimates["loser"])
+                g.winner.id, g.loser.id,
+                wf, wc, g.ultimates["winner"],
+                lf, lc, g.ultimates["loser"])
             after = _top16_ids()
         else:
             res = db.preview_match(g.winner.id, g.loser.id)
@@ -349,10 +357,12 @@ async def confirm_game(game: PendingGame):
         game.timeout_task.cancel()
     w, l = game.winner, game.loser
     before = _top16_ids()
-    res = db.record_match(
-        (w.id, w.display_name), (l.id, l.display_name),
-        game.factions["winner"], game.ultimates["winner"],
-        game.factions["loser"], game.ultimates["loser"],
+    wf, wc = _split_faction_class(game.factions["winner"])
+    lf, lc = _split_faction_class(game.factions["loser"])
+    db.record_match(
+        w.id, l.id,
+        wf, wc, game.ultimates["winner"],
+        lf, lc, game.ultimates["loser"],
     )
     after = _top16_ids()
     PENDING.pop(game.message.id, None)
@@ -424,12 +434,14 @@ async def build_leaderboard_images(tag):
         header_path = await renderer.render_header_async(os.path.join(d, f"lb_{tag}_header.jpg"))
     paths = [header_path]
 
-    players = db.top_players(16)
+    players = db.top_players(20)
     if players:
         async with aiohttp.ClientSession() as session:
             avatars = {p["user_id"]: await get_avatar(session, p["user_id"])
                        for p in players}
         names = {p["user_id"]: await get_display_name(p["user_id"]) for p in players}
+        # exclude deleted accounts (name fetch returned None), cap at 16
+        players = [p for p in players if names.get(p["user_id"]) is not None][:16]
         entries = model.build_entries(
             players,
             avatar_resolver=lambda uid: avatars.get(uid),
@@ -497,7 +509,7 @@ async def elo_cmd(interaction, player: discord.Member):
     winrate = round(100 * p["wins"] / games) if games else 0
     embed = discord.Embed(color=discord.Color.gold())
     # paired fields share a row (3 inline fields per row in Discord)
-    embed.add_field(name="🏰 Player", value=p["name"], inline=True)
+    embed.add_field(name="🏰 Player", value=player.display_name, inline=True)
     embed.add_field(name="📊 ELO", value=f"**{p['elo']}**", inline=True)
     embed.add_field(name="🎖️ Rank", value=config.rank_title(p["elo"]), inline=True)
     embed.add_field(name="⚔️ Games", value=str(games), inline=True)

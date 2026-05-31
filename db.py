@@ -3,7 +3,7 @@
 import sqlite3
 from contextlib import contextmanager
 
-from config import DB_PATH, ELO_START, FACTIONS
+from config import DB_PATH, ELO_START, FACTIONS, CLASSES
 import elo
 
 
@@ -11,6 +11,7 @@ import elo
 def _conn():
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA foreign_keys = ON")
     try:
         yield con
         con.commit()
@@ -18,13 +19,22 @@ def _conn():
         con.close()
 
 
+
+def _class_id(name: str | None) -> int | None:
+    if name is None:
+        return None
+    try:
+        return CLASSES.index(name)
+    except ValueError:
+        return None
+
+
+
 def init_db():
     with _conn() as con:
-        con.executescript(
-            """
+        con.executescript("""
             CREATE TABLE IF NOT EXISTS players (
                 user_id   TEXT PRIMARY KEY,
-                name      TEXT NOT NULL,
                 elo       INTEGER NOT NULL,
                 wins      INTEGER NOT NULL DEFAULT 0,
                 losses    INTEGER NOT NULL DEFAULT 0,
@@ -32,75 +42,65 @@ def init_db():
             );
             CREATE TABLE IF NOT EXISTS matches (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                winner_id       TEXT NOT NULL,
-                loser_id        TEXT NOT NULL,
+                winner_id       TEXT NOT NULL REFERENCES players(user_id),
+                loser_id        TEXT NOT NULL REFERENCES players(user_id),
                 winner_faction  TEXT,
+                winner_class    INTEGER,
                 winner_ultimate TEXT,
                 loser_faction   TEXT,
+                loser_class     INTEGER,
                 loser_ultimate  TEXT,
-                delta           INTEGER NOT NULL,
+                delta           INTEGER NOT NULL DEFAULT 0,
                 played_at       TEXT NOT NULL DEFAULT (datetime('now'))
             );
-            """
-        )
-        # migrate older DBs that predate the streak column
-        cols = [r[1] for r in con.execute("PRAGMA table_info(players)").fetchall()]
-        if "streak" not in cols:
-            con.execute("ALTER TABLE players ADD COLUMN streak INTEGER NOT NULL DEFAULT 0")
+            CREATE INDEX IF NOT EXISTS idx_matches_winner ON matches(winner_id);
+            CREATE INDEX IF NOT EXISTS idx_matches_loser  ON matches(loser_id);
+        """)
 
 
-def _ensure_player(con, user_id: str, name: str):
-    """Return (elo, streak), creating the player if needed."""
-    row = con.execute("SELECT * FROM players WHERE user_id=?", (user_id,)).fetchone()
+def _ensure_player(con, user_id: str):
+    row = con.execute("SELECT elo, streak FROM players WHERE user_id=?", (user_id,)).fetchone()
     if row is None:
-        con.execute(
-            "INSERT INTO players (user_id, name, elo) VALUES (?,?,?)",
-            (user_id, name, ELO_START),
-        )
+        con.execute("INSERT INTO players (user_id, elo) VALUES (?,?)", (user_id, ELO_START))
         return ELO_START, 0
-    # keep name fresh
-    con.execute("UPDATE players SET name=? WHERE user_id=?", (name, user_id))
     return row["elo"], row["streak"]
 
 
-def record_match(winner, loser, w_faction, w_ult, l_faction, l_ult):
-    """winner/loser are (user_id, name) tuples. Returns dict with new ratings."""
-    w_id, w_name = str(winner[0]), winner[1]
-    l_id, l_name = str(loser[0]), loser[1]
+def record_match(winner_id, loser_id, w_faction, w_class, w_ult, l_faction, l_class, l_ult):
+    """Record a confirmed match. Returns dict with new ratings and delta."""
+    w_id, l_id = str(winner_id), str(loser_id)
     with _conn() as con:
-        w_elo, w_streak = _ensure_player(con, w_id, w_name)
-        l_elo, l_streak = _ensure_player(con, l_id, l_name)
+        w_elo, w_streak = _ensure_player(con, w_id)
+        l_elo, l_streak = _ensure_player(con, l_id)
         new_w, new_l, delta = elo.update_ratings(w_elo, l_elo)
-        new_w_streak = w_streak + 1 if w_streak > 0 else 1
-        new_l_streak = l_streak - 1 if l_streak < 0 else -1
         con.execute(
             "UPDATE players SET elo=?, wins=wins+1, streak=? WHERE user_id=?",
-            (new_w, new_w_streak, w_id),
+            (new_w, w_streak + 1 if w_streak > 0 else 1, w_id),
         )
         con.execute(
             "UPDATE players SET elo=?, losses=losses+1, streak=? WHERE user_id=?",
-            (new_l, new_l_streak, l_id),
+            (new_l, l_streak - 1 if l_streak < 0 else -1, l_id),
         )
         con.execute(
             """INSERT INTO matches
-               (winner_id, loser_id, winner_faction, winner_ultimate,
-                loser_faction, loser_ultimate, delta)
-               VALUES (?,?,?,?,?,?,?)""",
-            (w_id, l_id, w_faction, w_ult, l_faction, l_ult, delta),
+               (winner_id, loser_id,
+                winner_faction, winner_class, winner_ultimate,
+                loser_faction,  loser_class,  loser_ultimate,
+                delta)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (w_id, l_id, w_faction, _class_id(w_class), w_ult, l_faction, _class_id(l_class), l_ult, delta),
         )
     return {"winner_elo": new_w, "loser_elo": new_l, "delta": delta}
 
 
 def get_player(user_id):
-    """Return a player's row as a dict, or None if they've never played."""
     with _conn() as con:
-        row = con.execute(
-            "SELECT * FROM players WHERE user_id=?", (str(user_id),)).fetchone()
+        row = con.execute("SELECT * FROM players WHERE user_id=?", (str(user_id),)).fetchone()
     return dict(row) if row else None
 
 
 def preview_match(winner_id, loser_id):
-    """Compute the projected ELO outcome WITHOUT writing anything."""
+    """Compute the projected ELO outcome without writing anything."""
     wp = get_player(winner_id)
     lp = get_player(loser_id)
     w_elo = wp["elo"] if wp else ELO_START

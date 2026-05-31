@@ -34,7 +34,8 @@ REPORTS_CHANNEL_ID = int(os.environ.get("REPORTS_CHANNEL_ID", "0"))
 
 # --- ELO -------------------------------------------------------------------
 ELO_START = 1000
-ELO_K = 96  # large K -> bigger, more exciting rating swings per game
+ELO_K = 60  # even match = ±30 pts
+ELO_D = 684  # slope divisor; higher = flatter curve (standard chess uses 400)
 
 # --- Paths -----------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

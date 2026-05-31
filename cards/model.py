@@ -30,7 +30,9 @@ def build_entries(players, avatar_resolver=None, name_resolver=None):
         games = p["wins"] + p["losses"]
         winrate = round(100 * p["wins"] / games) if games else 0
         avatar = avatar_resolver(p["user_id"]) if avatar_resolver else None
-        name = (name_resolver(p["user_id"]) if name_resolver else None) or p["name"]
+        name = name_resolver(p["user_id"]) if name_resolver else None
+        if name is None:
+            continue  # skip deleted accounts
         entries.append(
             {
                 "position": i,
