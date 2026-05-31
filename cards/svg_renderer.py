@@ -245,8 +245,7 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=1):
 
 def render_result(winner, loser, delta, out_path,
                   winner_avatar=None, loser_avatar=None, scale=1):
-    """Two stacked rows: winner on top, loser below. Faction + ultimate share a
-    line; emoji badges replace VICTORY/DEFEAT text."""
+    """Two stacked rows: winner on top, loser below. Icons show town/ultimate/class."""
     from cards.model import default_avatar
 
     width = 900
@@ -255,41 +254,50 @@ def render_result(winner, loser, delta, out_path,
     height = pad * 2 + row_h * 2
     out_w, out_h = 800, height * 800 // width
 
-    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#9045CE"  # gold / dark purple
+    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#9045CE"
+    isz, igap = 40, 6   # icon size and gap
 
-    def row(y, p, avatar, border_col, emoji, elo_delta):
+    def row(y, p, avatar, border_col, result_emoji, elo_delta):
         avatar = avatar or default_avatar(p["name"])
-        faction_col = FACTION_COLORS.get(faction_base(p["faction"]), "#90a4ae")
-        cls_emoji = faction_emoji(p["faction"])
-        p = {**p, "name": _latinize(p["name"]), "ultimate": _latinize(p["ultimate"])}
-        cy = y + row_h // 2
+        fac_name = faction_base(p["faction"])
+        cls_name = p["faction"].split(": ", 1)[1] if ": " in p["faction"] else None
+        faction_col = FACTION_COLORS.get(fac_name, "#90a4ae")
+        town_img = _local_data_uri(_TOWNS_DIR,     fac_name + ".gif")
+        ult_img  = _local_data_uri(_ULTIMATES_DIR, p["ultimate"] + ".png")
+        cls_img  = _local_data_uri(_ULTIMATES_DIR, cls_name + ".png") if cls_name else None
+        cy  = y + row_h // 2
         acx, ar = 88, 46
-        lx = 210
-        ex = width - 160   # class emoji column
-        rx = width - 80    # elo column
+        lx  = 210
+        rx  = width - 80
         cid = f"clip_{y}"
-        info = f'{_esc(faction_base(p["faction"]))}  ·  {_esc(p["ultimate"])}'
-        return (
+        out = [
             f'<rect x="20" y="{y}" width="{width-40}" height="{row_h-12}" rx="18" '
             f'{_CELL_FILL} stroke="{border_col}" '
-            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>'
+            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>',
             f'<clipPath id="{cid}"><circle cx="{acx}" cy="{cy}" r="{ar}"/></clipPath>'
             f'<circle cx="{acx}" cy="{cy}" r="{ar+3}" fill="none" stroke="{border_col}" stroke-width="3"/>'
             f'<image x="{acx-ar}" y="{cy-ar}" width="{ar*2}" height="{ar*2}" '
-            f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>'
-            f'<text x="140" y="{cy+15}" font-size="44" font-weight="700" font-family="{_EMOJI_FAMILY}" text-anchor="middle">{emoji}</text>'
-            f'<text x="{lx}" y="{cy-8}" font-size="34" font-weight="700" '
-            f'fill="#f2eefc">{_esc(p["name"][:30])}</text>'
-            f'<text x="{lx}" y="{cy+28}" font-size="23" font-weight="700" '
-            f'fill="{faction_col}">{info}</text>'
-            f'<text x="{ex}" y="{cy+10}" font-size="35" font-weight="700" font-family="{_EMOJI_FAMILY}" '
-            f'text-anchor="middle">{_esc(cls_emoji)}</text>'
+            f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>',
+            f'<text x="140" y="{cy+15}" font-size="44" font-weight="700" '
+            f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{result_emoji}</text>',
+            f'<text x="{lx}" y="{cy-10}" font-size="34" font-weight="700" '
+            f'fill="#f2eefc">{_esc(_latinize(p["name"])[:30])}</text>',
+        ]
+        icon_cols = [
+            (town_img, faction_col, f"rc_{y}_t"),
+            (ult_img,  _GOLD_EDGE,  f"rc_{y}_u"),
+            (cls_img,  _GOLD_EDGE,  f"rc_{y}_c"),
+        ]
+        for k, (img, col, clip_id) in enumerate(icon_cols):
+            _d_sq_img(out, img, lx + k * (isz + igap), cy + 6, isz, 8, col, clip_id, sw=2, so=0.8)
+        delta_col = "#66bb6a" if elo_delta >= 0 else "#ef5350"
+        out.append(
             f'<text x="{rx}" y="{cy-2}" font-size="42" font-weight="700" '
             f'fill="#f2eefc" text-anchor="middle">{p["elo"]}</text>'
             f'<text x="{rx}" y="{cy+30}" font-size="24" font-weight="700" '
-            f'fill="{"#66bb6a" if elo_delta>=0 else "#ef5350"}" '
-            f'text-anchor="middle">{"+" if elo_delta>=0 else ""}{elo_delta}</text>'
+            f'fill="{delta_col}" text-anchor="middle">{"+" if elo_delta>=0 else ""}{elo_delta}</text>'
         )
+        return "".join(out)
 
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
@@ -393,44 +401,6 @@ async def render_result_async(winner, loser, delta, out_path,
 _ULTIMATES_DIR = os.path.join(_FONT_DIR, "Ultimates")
 _TOWNS_DIR = os.path.join(_FONT_DIR, "Towns")
 
-_ULTIMATE_FILES = {
-    "Master of Creation":   "SummoningMagic_MasterOfCreatures.png",
-    "Master of Death":      "AvatarOfDeath.png",
-    "Master of Destruction":"Demonic_DemonicFlame.png",
-    "Master of Life":       "LightMagic_GuardianAngel.png",
-    "Angelic Alliance":     "Angel_Wings.png",
-    "Blood Thirst":         "BloodThirst.png",
-    "Forest Rage":          "Rage_of_the_Forest.png",
-    "Forgotten Witchcraft": "Matron_Salvo.png",
-    "Frax Essence":         "Artificer_4.png",
-    "Mithral Plating":      "Dwarven_Mithral_Cuirass.png",
-    "Undying Thirst":       "Vampire_Princess.png",
-    "Runic Excelence":      "Researcher.png",
-    "Runic Protection":     "Rune_of_Absolute_Protection.png",
-    "Nature's Luck":        "Avenger_AbsoluteLuck.png",
-    "Absolute Empathy":     "Empathy.png",
-    "Might over Magic":     "Training_AbsoluteCharge.png",
-    "Arcane Omniscience":   "Artificer_AbsoluteWizardy.png",
-    "Howl of Terror":       "Necromancy_AbsoluteFear.png",
-    "Blood Frenzy":         "Ultimate_Perk_Absolute_Rage.png",
-}
-
-_FACTION_TOWN_FILES = {
-    "Haven":      "town_haven.gif",
-    "Sylvan":     "town_sylvan.gif",
-    "Academy":    "town_academy.gif",
-    "Dungeon":    "town_dungeon.gif",
-    "Necropolis": "town_necropolis.gif",
-    "Inferno":    "town_inferno.gif",
-    "Fortress":   "town_fortress.gif",
-    "Stronghold": "Stronghold.gif",
-}
-
-_CLASS_FILES = {
-    "Warrior": "Training_AbsoluteCharge.png",
-    "Warmage":  "Rune_of_Absolute_Protection.png",
-    "Warlock":  "Artificer_AbsoluteWizardy.png",
-}
 
 
 def _local_data_uri(directory: str, filename: str | None) -> str | None:
@@ -462,26 +432,16 @@ _S_UCW     = _S_W_INNER // _S_COLS_U   # 111
 _S_UISZ    = _S_UCW - 2 * _S_PAD      # 91
 _S_UCH     = 148
 
-_S_FC_LBL  = 70
-_S_FC_CW   = (_S_W_INNER - _S_FC_LBL) // 8   # 116
-_S_FC_HDR  = 90
-_S_FC_ISZT = 46
-_S_FC_ROW  = 54
-_S_FC_H    = _S_FC_HDR + 3 * _S_FC_ROW       # 252
-_S_FC_BOT  = 10                               # extra space under faction section
+_S_FC_LBL   = 70
+_S_FC_CW    = (_S_W_INNER - _S_FC_LBL) // 8   # 116
+_S_FC_HDR   = 90
+_S_FC_ISZT  = 46
+_S_FC_ROW   = 54
+_S_FC_RGAP  = 10   # gap between faction header row and first class row
+_S_FC_H     = _S_FC_HDR + _S_FC_RGAP + 3 * _S_FC_ROW   # 262
 
 _S_CCW     = _S_W_INNER // 3   # 333
 _S_CCH     = 110
-
-# class matchup table (3×3)
-_S_CMX_LBL  = 60
-_S_CMX_CW   = (_S_W_INNER - _S_CMX_LBL) // 3   # 313
-_S_CMX_HDR  = 50   # column header row height
-_S_CMX_ROW  = 50   # each data row height
-_S_CMX_ISZT = 36   # icon size in matchup headers / row labels
-_S_CMX_H    = _S_SUB_H + _S_CMX_HDR + 3 * _S_CMX_ROW   # 234
-
-_S_CCH_TOTAL = _S_CCH + _S_CMX_H   # 344
 
 _S_FRAX_TOWN_ISZ = round(_S_UISZ * 0.7)   # 64  — town icons in frax row (70% of ult icon)
 
@@ -509,14 +469,18 @@ def _d_sq_img(parts, img, x, y, sz, rx, stroke_col, clip_id, sw=2, so=0.75):
 
 
 def _d_stats(parts, cx, y_games, games, winrate, has, fg=13, fw=17):
-    wr_col    = ("#66bb6a" if winrate >= 50 else "#ef5350") if has else "#606078"
-    games_str = f'{games} games' if has else 'no games'
-    wr_str    = f'{winrate}%'    if has else '–'
+    if not has:
+        parts.append(
+            f'<text x="{cx}" y="{y_games + (fw + 4) // 2 + fg // 2}" font-size="{fw}" '
+            f'font-weight="700" fill="#606078" text-anchor="middle">–</text>'
+        )
+        return
+    wr_col = "#66bb6a" if winrate >= 50 else "#ef5350"
     parts.append(
         f'<text x="{cx}" y="{y_games}" font-size="{fg}" '
-        f'fill="#c0b8d8" text-anchor="middle">{_esc(games_str)}</text>'
+        f'fill="#c0b8d8" text-anchor="middle">{_esc(f"{games} games")}</text>'
         f'<text x="{cx}" y="{y_games + fw + 4}" font-size="{fw}" font-weight="700" '
-        f'fill="{wr_col}" text-anchor="middle">{_esc(wr_str)}</text>'
+        f'fill="{wr_col}" text-anchor="middle">{_esc(f"{winrate}%")}</text>'
     )
 
 
@@ -609,7 +573,7 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
     )
 
     for j, cls in enumerate(CLASSES):
-        ry  = y + _S_FC_HDR + j * _S_FC_ROW
+        ry  = y + _S_FC_HDR + _S_FC_RGAP + j * _S_FC_ROW
         rcy = ry + _S_FC_ROW // 2
         lsz = _S_FC_ROW - 10
         _d_sq_img(parts, cls_imgs.get(cls),
@@ -620,20 +584,24 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
             f'stroke="{_GOLD_EDGE}" stroke-opacity="0.15" stroke-width="1"/>'
         )
         for i, fac in enumerate(FACTIONS):
-            cx    = _S_INSET + _S_FC_LBL + i * _S_FC_CW + _S_FC_CW // 2
-            cell  = (fc_data.get(fac) or [{}, {}, {}])[j]
-            has   = cell.get("games", 0) > 0
-            wr    = cell.get("winrate", 0)
-            g     = cell.get("games", 0)
-            wr_col = ("#66bb6a" if wr >= 50 else "#ef5350") if has else "#606078"
-            wr_str = f'{wr}%'      if has else '–'
-            g_str  = f'{g} games' if has else '0 games'
-            parts.append(
-                f'<text x="{cx}" y="{rcy - 5}" font-size="12" '
-                f'fill="#c0b8d8" text-anchor="middle">{_esc(g_str)}</text>'
-                f'<text x="{cx}" y="{rcy + 16}" font-size="17" font-weight="700" '
-                f'fill="{wr_col}" text-anchor="middle">{_esc(wr_str)}</text>'
-            )
+            cx   = _S_INSET + _S_FC_LBL + i * _S_FC_CW + _S_FC_CW // 2
+            cell = (fc_data.get(fac) or [{}, {}, {}])[j]
+            has  = cell.get("games", 0) > 0
+            wr   = cell.get("winrate", 0)
+            g    = cell.get("games", 0)
+            if has:
+                wr_col = "#66bb6a" if wr >= 50 else "#ef5350"
+                parts.append(
+                    f'<text x="{cx}" y="{rcy - 5}" font-size="12" '
+                    f'fill="#c0b8d8" text-anchor="middle">{g} games</text>'
+                    f'<text x="{cx}" y="{rcy + 16}" font-size="17" font-weight="700" '
+                    f'fill="{wr_col}" text-anchor="middle">{wr}%</text>'
+                )
+            else:
+                parts.append(
+                    f'<text x="{cx}" y="{rcy + 6}" font-size="17" font-weight="700" '
+                    f'fill="#606078" text-anchor="middle">–</text>'
+                )
 
     for i in range(1, 8):
         lx = _S_INSET + _S_FC_LBL + i * _S_FC_CW
@@ -655,91 +623,25 @@ def _d_class_cell(parts, col, y, r, cls_imgs):
     ix  = x + _S_PAD
     tx  = ix + isz + 16
     has = r["games"] > 0
-    wr_col    = ("#66bb6a" if r["winrate"] >= 50 else "#ef5350") if has else "#606078"
-    games_str = f'{r["games"]} games' if has else 'no games'
-    wr_str    = f'{r["winrate"]}%'    if has else '–'
     _d_sq_img(parts, cls_imgs.get(r["class"]), ix, y + _S_PAD, isz, 12,
               _GOLD_EDGE, f"cls{col}", sw=2)
     parts.append(
         f'<text x="{tx}" y="{cy - 18}" font-size="30" font-weight="700" '
         f'fill="#f2eefc">{_esc(r["class"])}</text>'
-        f'<text x="{tx}" y="{cy + 8}" font-size="14" fill="#c0b8d8">'
-        f'{_esc(games_str)}</text>'
-        f'<text x="{tx}" y="{cy + 32}" font-size="22" font-weight="700" '
-        f'fill="{wr_col}">{_esc(wr_str)}</text>'
     )
-
-
-def _d_class_matchup(parts, y, matchup_data, cls_imgs):
-    """3×3 class-vs-class matchup table. matchup_data keyed by (i, j) int tuples."""
-    from config import CLASSES
-    _d_sub_header(parts, y, "— Class Matchups —")
-    y += _S_SUB_H
-
-    # column header icons
-    for j, cls in enumerate(CLASSES):
-        cx  = _S_INSET + _S_CMX_LBL + j * _S_CMX_CW + _S_CMX_CW // 2
-        isz = _S_CMX_ISZT
-        _d_sq_img(parts, cls_imgs.get(cls),
-                  cx - isz // 2, y + (_S_CMX_HDR - isz) // 2,
-                  isz, 8, _GOLD_EDGE, f"cmxh{j}", sw=2, so=0.7)
-
-    # separator below column headers
-    parts.append(
-        f'<line x1="{_S_INSET}" y1="{y + _S_CMX_HDR}" '
-        f'x2="{W - _S_INSET}" y2="{y + _S_CMX_HDR}" '
-        f'stroke="{_GOLD_EDGE}" stroke-opacity="0.3" stroke-width="1"/>'
-    )
-    y += _S_CMX_HDR
-
-    for i, row_cls in enumerate(CLASSES):
-        ry  = y + i * _S_CMX_ROW
-        rcy = ry + _S_CMX_ROW // 2
-        if i > 0:
-            parts.append(
-                f'<line x1="{_S_INSET}" y1="{ry}" x2="{W - _S_INSET}" y2="{ry}" '
-                f'stroke="{_GOLD_EDGE}" stroke-opacity="0.15" stroke-width="1"/>'
-            )
-        isz = _S_CMX_ISZT
-        _d_sq_img(parts, cls_imgs.get(row_cls),
-                  _S_INSET + (_S_CMX_LBL - isz) // 2, rcy - isz // 2,
-                  isz, 8, _GOLD_EDGE, f"cmxr{i}", sw=2, so=0.7)
-        for j in range(len(CLASSES)):
-            cx = _S_INSET + _S_CMX_LBL + j * _S_CMX_CW + _S_CMX_CW // 2
-            if i == j:
-                parts.append(
-                    f'<text x="{cx}" y="{rcy + 6}" font-size="22" font-weight="700" '
-                    f'fill="#606078" text-anchor="middle">–</text>'
-                )
-                continue
-            cell   = matchup_data.get((i, j)) or {}
-            has    = cell.get("games", 0) > 0
-            wr     = cell.get("winrate", 0)
-            g      = cell.get("games", 0)
-            wr_col = ("#66bb6a" if wr >= 50 else "#ef5350") if has else "#606078"
-            parts.append(
-                f'<text x="{cx}" y="{rcy - 5}" font-size="12" '
-                f'fill="#c0b8d8" text-anchor="middle">'
-                f'{_esc(f"{g} games" if has else "no games")}</text>'
-                f'<text x="{cx}" y="{rcy + 16}" font-size="17" font-weight="700" '
-                f'fill="{wr_col}" text-anchor="middle">'
-                f'{_esc(f"{wr}%" if has else "–")}</text>'
-            )
-
-    # vertical separators
-    y_top = y - _S_CMX_HDR
-    y_bot = y + 3 * _S_CMX_ROW
-    for j in range(1, 3):
-        lx = _S_INSET + _S_CMX_LBL + j * _S_CMX_CW
+    if has:
+        wr_col = "#66bb6a" if r["winrate"] >= 50 else "#ef5350"
         parts.append(
-            f'<line x1="{lx}" y1="{y_top}" x2="{lx}" y2="{y_bot}" '
-            f'stroke="{_GOLD_EDGE}" stroke-opacity="0.12" stroke-width="1"/>'
+            f'<text x="{tx}" y="{cy + 8}" font-size="14" fill="#c0b8d8">'
+            f'{r["games"]} games</text>'
+            f'<text x="{tx}" y="{cy + 32}" font-size="22" font-weight="700" '
+            f'fill="{wr_col}">{r["winrate"]}%</text>'
         )
-    parts.append(
-        f'<line x1="{_S_INSET + _S_CMX_LBL}" y1="{y_top}" '
-        f'x2="{_S_INSET + _S_CMX_LBL}" y2="{y_bot}" '
-        f'stroke="{_GOLD_EDGE}" stroke-opacity="0.2" stroke-width="1"/>'
-    )
+    else:
+        parts.append(
+            f'<text x="{tx}" y="{cy + 20}" font-size="22" font-weight="700" '
+            f'fill="#606078">–</text>'
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -768,15 +670,13 @@ def render_stats_header_img(title, out_path, scale=1):
 
 def render_ult_section_img(ult_rows, frax_rows, out_path, scale=1):
     """Render the Ultimate Winrate section body (no header bar)."""
-    from config import CLASSES
-
     main_ult = [r for r in ult_rows if r["ultimate"] != "Frax Essence"]
     main_ult.sort(key=lambda r: r["games"], reverse=True)
 
-    ult_imgs  = {r["ultimate"]: _local_data_uri(_ULTIMATES_DIR, _ULTIMATE_FILES.get(r["ultimate"]))
+    ult_imgs  = {r["ultimate"]: _local_data_uri(_ULTIMATES_DIR, r["ultimate"] + ".png")
                  for r in main_ult}
-    frax_icon = _local_data_uri(_ULTIMATES_DIR, _ULTIMATE_FILES.get("Frax Essence"))
-    town_imgs = {f: _local_data_uri(_TOWNS_DIR, _FACTION_TOWN_FILES.get(f))
+    frax_icon = _local_data_uri(_ULTIMATES_DIR, "Frax Essence.png")
+    town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif")
                  for f in {r["faction"] for r in frax_rows}}
 
     sec_h = _S_UCH * 3 + _S_SUB_H + 5   # +5 bottom breathing room under frax WR
@@ -811,10 +711,10 @@ def render_faction_section_img(faction_rows, fc_data, out_path, scale=1):
     """Render the Faction Stats section body (no header bar)."""
     from config import FACTIONS, CLASSES
 
-    town_imgs = {f: _local_data_uri(_TOWNS_DIR, _FACTION_TOWN_FILES.get(f)) for f in FACTIONS}
-    cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, _CLASS_FILES.get(c)) for c in CLASSES}
+    town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
+    cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
 
-    total_h = _S_GAP + _S_FC_H + _S_FC_BOT + _S_GAP
+    total_h = _S_GAP + _S_FC_H + _S_GAP
     ow = 800
     oh = total_h * ow // W
 
@@ -830,13 +730,13 @@ def render_faction_section_img(faction_rows, fc_data, out_path, scale=1):
     return _save("".join(parts), out_path, scale)
 
 
-def render_class_section_img(class_rows, out_path, matchup_data=None, scale=1):
+def render_class_section_img(class_rows, out_path, scale=1):
     """Render the Class Winrate section body (no header bar)."""
     from config import CLASSES
 
-    cls_imgs = {c: _local_data_uri(_ULTIMATES_DIR, _CLASS_FILES.get(c)) for c in CLASSES}
+    cls_imgs = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
 
-    total_h = _S_GAP + _S_CCH_TOTAL + _S_GAP
+    total_h = _S_GAP + _S_CCH + _S_GAP
     ow = 800
     oh = total_h * ow // W
 
@@ -845,10 +745,9 @@ def render_class_section_img(class_rows, out_path, matchup_data=None, scale=1):
         f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">',
     ]
     y = _S_GAP
-    _d_section_bg(parts, y, _S_CCH_TOTAL)
+    _d_section_bg(parts, y, _S_CCH)
     for i, r in enumerate(class_rows):
         _d_class_cell(parts, i, y, r, cls_imgs)
-    _d_class_matchup(parts, y + _S_CCH, matchup_data or {}, cls_imgs)
 
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
@@ -859,27 +758,27 @@ def render_class_section_img(class_rows, out_path, matchup_data=None, scale=1):
 # ---------------------------------------------------------------------------
 
 def render_stats_card(ult_rows, faction_rows, class_rows, frax_rows, fc_data,
-                      out_path, matchup_data=None, scale=1):
+                      out_path, scale=1):
     """Stats card: ultimates / faction stats / class — all in one image."""
     from config import FACTIONS, CLASSES
 
     main_ult = [r for r in ult_rows if r["ultimate"] != "Frax Essence"]
     main_ult.sort(key=lambda r: r["games"], reverse=True)
 
-    ult_imgs  = {r["ultimate"]: _local_data_uri(_ULTIMATES_DIR, _ULTIMATE_FILES.get(r["ultimate"]))
+    ult_imgs  = {r["ultimate"]: _local_data_uri(_ULTIMATES_DIR, r["ultimate"] + ".png")
                  for r in main_ult}
-    frax_icon = _local_data_uri(_ULTIMATES_DIR, _ULTIMATE_FILES.get("Frax Essence"))
-    town_imgs = {f: _local_data_uri(_TOWNS_DIR, _FACTION_TOWN_FILES.get(f)) for f in FACTIONS}
-    cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, _CLASS_FILES.get(c)) for c in CLASSES}
+    frax_icon = _local_data_uri(_ULTIMATES_DIR, "Frax Essence.png")
+    town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
+    cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
 
     ult_sec_h = _S_UCH * 3 + _S_SUB_H + 5
     fc_sec_h  = _S_FC_H
-    cls_sec_h = _S_CCH_TOTAL
+    cls_sec_h = _S_CCH
 
     total_h = (_S_GAP
                + _S_HDR_H + ult_sec_h
                + _S_GAP
-               + _S_HDR_H + fc_sec_h + _S_FC_BOT
+               + _S_HDR_H + fc_sec_h
                + _S_GAP
                + _S_HDR_H + cls_sec_h
                + _S_GAP)
@@ -914,21 +813,20 @@ def render_stats_card(ult_rows, faction_rows, class_rows, frax_rows, fc_data,
     y += _S_HDR_H
     _d_section_bg(parts, y, fc_sec_h)
     _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs)
-    y += _S_FC_H + _S_FC_BOT + _S_GAP
+    y += _S_FC_H + _S_GAP
 
     _d_section_header(parts, y, "Class Winrate")
     y += _S_HDR_H
     _d_section_bg(parts, y, cls_sec_h)
     for i, r in enumerate(class_rows):
         _d_class_cell(parts, i, y, r, cls_imgs)
-    _d_class_matchup(parts, y + _S_CCH, matchup_data or {}, cls_imgs)
 
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
 
 
 async def render_stats_card_async(ult_rows, faction_rows, class_rows, frax_rows,
-                                   fc_data, out_path, matchup_data=None):
+                                   fc_data, out_path):
     return await asyncio.to_thread(
         render_stats_card, ult_rows, faction_rows, class_rows,
-        frax_rows, fc_data, out_path, matchup_data)
+        frax_rows, fc_data, out_path)

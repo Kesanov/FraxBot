@@ -206,29 +206,6 @@ def faction_class_stats():
     return out
 
 
-def class_matchup_stats():
-    """WR for each (winner_class, loser_class) pair. Returns {(i, j): {wins,losses,games,winrate}}.
-    Diagonal (i==i) is omitted. Indices follow CLASSES order."""
-    with _conn() as con:
-        wins = {(wc, lc): cnt for wc, lc, cnt in con.execute(
-            "SELECT winner_class, loser_class, COUNT(*) FROM matches "
-            "WHERE winner_class IS NOT NULL AND loser_class IS NOT NULL "
-            "GROUP BY winner_class, loser_class"
-        )}
-    out = {}
-    n = len(CLASSES)
-    for i in range(n):
-        for j in range(n):
-            if i == j:
-                continue
-            w = wins.get((i, j), 0)
-            l = wins.get((j, i), 0)
-            g = w + l
-            out[(i, j)] = {"wins": w, "losses": l, "games": g,
-                           "winrate": round(100 * w / g) if g else 0}
-    return out
-
-
 def class_stats():
     """Global per-class record (Warrior/Warmage/Warlock), original order."""
     with _conn() as con:

@@ -7,7 +7,6 @@ Uses real DB data when available, otherwise falls back to mock data.
 
 import os
 import sys
-import subprocess
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
@@ -50,16 +49,6 @@ MOCK_CLASSES = [
     for c, w, l in [("Warrior", 45, 35), ("Warmage", 38, 42), ("Warlock", 50, 30)]
 ]
 
-# (i, j) = class index i beats class index j  (0=Warrior, 1=Warmage, 2=Warlock)
-MOCK_CLASS_MATCHUP = {
-    (i, j): {"wins": w, "losses": l, "games": w + l,
-              "winrate": round(100 * w / (w + l)) if w + l else 0}
-    for (i, j), (w, l) in {
-        (0, 1): (25, 20), (0, 2): (30, 15),
-        (1, 0): (20, 25), (1, 2): (22, 18),
-        (2, 0): (15, 30), (2, 1): (18, 22),
-    }.items()
-}
 
 MOCK_FRAX = [
     {"faction": f, "wins": w, "losses": l, "games": w + l,
@@ -97,7 +86,6 @@ def main():
             cls_rows  = db.class_stats()
             frax_rows = db.frax_by_faction()
             fc_rows   = db.faction_class_stats()
-            mx_rows   = db.class_matchup_stats()
             if not any(r["games"] for r in ult_rows):
                 raise ValueError("empty db")
         except Exception as e:
@@ -110,7 +98,6 @@ def main():
         cls_rows  = MOCK_CLASSES
         frax_rows = MOCK_FRAX
         fc_rows   = MOCK_FC_DATA
-        mx_rows   = MOCK_CLASS_MATCHUP
 
     def _out(name):
         return os.path.join(CACHE, f"preview_{name}.webp")
@@ -121,21 +108,12 @@ def main():
         ("h2_fac",   lambda: renderer.render_stats_header_img("Faction Stats",      _out("h2_fac"))),
         ("s2_fac",   lambda: renderer.render_faction_section_img(fac_rows, fc_rows, _out("s2_fac"))),
         ("h3_cls",   lambda: renderer.render_stats_header_img("Class Winrate",      _out("h3_cls"))),
-        ("s3_cls",   lambda: renderer.render_class_section_img(cls_rows, _out("s3_cls"), mx_rows)),
+        ("s3_cls",   lambda: renderer.render_class_section_img(cls_rows, _out("s3_cls"))),
     ]
-
-    def _open(p):
-        if sys.platform == "win32":
-            os.startfile(p)
-        elif sys.platform == "darwin":
-            subprocess.run(["open", p])
-        else:
-            subprocess.run(["xdg-open", p])
 
     for name, fn in renders:
         path = fn()
         print(f"Rendered {name}: {path}")
-        _open(path)
 
 
 if __name__ == "__main__":

@@ -513,8 +513,6 @@ async def publish_winrate_stats():
     cls_rows  = db.class_stats()
     frax_rows = db.frax_by_faction()
     fc_rows   = db.faction_class_stats()
-    mx_rows   = db.class_matchup_stats()
-
     d = config.CACHE_DIR
     renders = [
         ("h1", lambda: renderer.render_stats_header_img(
@@ -528,7 +526,7 @@ async def publish_winrate_stats():
         ("h3", lambda: renderer.render_stats_header_img(
             "Class Winrate", os.path.join(d, "stats_h3.webp"))),
         ("s3", lambda: renderer.render_class_section_img(
-            cls_rows, os.path.join(d, "stats_s3.webp"), mx_rows)),
+            cls_rows, os.path.join(d, "stats_s3.webp"))),
     ]
 
     paths = []
