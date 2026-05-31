@@ -64,7 +64,7 @@ def _d_stats(parts, cx, y_games, games, winrate, has, fg=13, fw=17):
     wr_col = "#66bb6a" if winrate >= 50 else "#ef5350"
     parts.append(
         f'<text x="{cx}" y="{y_games}" font-size="{fg}" font-weight="700" '
-        f'fill="#c0b8d8" text-anchor="middle">{_esc(f"{games} games")}</text>'
+        f'fill="#c0b8d8" text-anchor="middle">{_esc(f"{games}x")}</text>'
         f'<text x="{cx}" y="{y_games + fw + 4}" font-size="{fw}" font-weight="700" '
         f'fill="{wr_col}" text-anchor="middle">{_esc(f"{winrate}%")}</text>'
     )
@@ -173,7 +173,7 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
                 wr_col = "#66bb6a" if wr >= 50 else "#ef5350"
                 parts.append(
                     f'<text x="{cx}" y="{rcy - 7}" font-size="17" font-weight="700" '
-                    f'fill="#c0b8d8" text-anchor="middle">{g} games</text>'
+                    f'fill="#c0b8d8" text-anchor="middle">{g}x</text>'
                     f'<text x="{cx}" y="{rcy + 23}" font-size="24" font-weight="700" '
                     f'fill="{wr_col}" text-anchor="middle">{wr}%</text>'
                 )
@@ -210,7 +210,7 @@ def _d_class_cell(parts, col, y, r, cls_imgs):
         wr_col = "#66bb6a" if r["winrate"] >= 50 else "#ef5350"
         parts.append(
             f'<text x="{tx}" y="{cy + 8}" font-size="20" font-weight="700" fill="#c0b8d8">'
-            f'{r["games"]} games</text>'
+            f'{r["games"]}x</text>'
             f'<text x="{tx}" y="{cy + 40}" font-size="31" font-weight="700" '
             f'fill="{wr_col}">{r["winrate"]}%</text>'
         )

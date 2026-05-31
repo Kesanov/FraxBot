@@ -59,7 +59,7 @@ def _lux_bg():
     return ""
 
 
-def _save(svg: str, out_path: str, scale: float = 2):
+def _save(svg: str, out_path: str, scale: float = 1):
     try:
         import io
         import resvg_py
@@ -72,7 +72,7 @@ def _save(svg: str, out_path: str, scale: float = 2):
         ))
         img = Image.open(io.BytesIO(png)).convert("RGBA")
         webp_path = os.path.splitext(out_path)[0] + ".webp"
-        img.save(webp_path, "WEBP", quality=78, method=6)
+        img.save(webp_path, "WEBP", quality=78, method=1)
         return webp_path
     except Exception:
         pass
