@@ -567,8 +567,8 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
         _d_stats(parts, cx, yg, r["games"], r["winrate"], r["games"] > 0, fg=13, fw=17)
 
     parts.append(
-        f'<line x1="{_S_INSET}" y1="{y + _S_FC_HDR}" '
-        f'x2="{W - _S_INSET}" y2="{y + _S_FC_HDR}" '
+        f'<line x1="{_S_INSET}" y1="{y + _S_FC_HDR + _S_FC_RGAP}" '
+        f'x2="{W - _S_INSET}" y2="{y + _S_FC_HDR + _S_FC_RGAP}" '
         f'stroke="{_GOLD_EDGE}" stroke-opacity="0.3" stroke-width="1"/>'
     )
 

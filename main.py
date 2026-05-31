@@ -89,6 +89,10 @@ _cached_header_path: str | None = None
 # so there is always exactly one file per leaderboard position.
 _chunk_cache: dict[int, str] = {}
 
+# Stats header cache: title -> rendered file path. Headers never change so they
+# are rendered once and reused on every daily refresh.
+_stats_header_cache: dict[str, str] = {}
+
 # Drop pending games the enemy never confirmed after this many seconds.
 PENDING_TTL = 24 * 3600
 
@@ -499,6 +503,19 @@ async def publish_leaderboard():
         _cleanup(paths)
 
 
+async def _render_stats_header(title: str) -> str:
+    """Return a cached path for a stats header bar, rendering it once if needed."""
+    cached = _stats_header_cache.get(title)
+    if cached and os.path.exists(cached):
+        return cached
+    safe = title.replace(" ", "_").lower()
+    path = os.path.join(config.CACHE_DIR, f"stats_hdr_{safe}.webp")
+    out = await asyncio.get_event_loop().run_in_executor(
+        None, renderer.render_stats_header_img, title, path)
+    _stats_header_cache[title] = out
+    return out
+
+
 async def publish_winrate_stats():
     """Post (or repost) the 6 stats card images into the winrate channel."""
     if not config.WINRATE_CHANNEL_ID:
@@ -513,27 +530,21 @@ async def publish_winrate_stats():
     cls_rows  = db.class_stats()
     frax_rows = db.frax_by_faction()
     fc_rows   = db.faction_class_stats()
-    d = config.CACHE_DIR
-    renders = [
-        ("h1", lambda: renderer.render_stats_header_img(
-            "Ultimate Winrate", os.path.join(d, "stats_h1.webp"))),
-        ("s1", lambda: renderer.render_ult_section_img(
-            ult_rows, frax_rows, os.path.join(d, "stats_s1.webp"))),
-        ("h2", lambda: renderer.render_stats_header_img(
-            "Faction Stats", os.path.join(d, "stats_h2.webp"))),
-        ("s2", lambda: renderer.render_faction_section_img(
-            fac_rows, fc_rows, os.path.join(d, "stats_s2.webp"))),
-        ("h3", lambda: renderer.render_stats_header_img(
-            "Class Winrate", os.path.join(d, "stats_h3.webp"))),
-        ("s3", lambda: renderer.render_class_section_img(
-            cls_rows, os.path.join(d, "stats_s3.webp"))),
-    ]
 
-    paths = []
+    d    = config.CACHE_DIR
     loop = asyncio.get_event_loop()
-    for _, fn in renders:
-        path = await loop.run_in_executor(None, fn)
-        paths.append(path)
+
+    h1 = await _render_stats_header("Ultimate Winrate")
+    s1 = await loop.run_in_executor(None, renderer.render_ult_section_img,
+                                    ult_rows, frax_rows, os.path.join(d, "stats_s1.webp"))
+    await asyncio.sleep(2)
+    h2 = await _render_stats_header("Faction Stats")
+    s2 = await loop.run_in_executor(None, renderer.render_faction_section_img,
+                                    fac_rows, fc_rows, os.path.join(d, "stats_s2.webp"))
+    await asyncio.sleep(2)
+    h3 = await _render_stats_header("Class Winrate")
+    s3 = await loop.run_in_executor(None, renderer.render_class_section_img,
+                                    cls_rows, os.path.join(d, "stats_s3.webp"))
 
     # delete the bot's previous stats messages before reposting
     async for msg in channel.history(limit=20):
@@ -543,7 +554,7 @@ async def publish_winrate_stats():
             except discord.HTTPException:
                 pass
 
-    for path in paths:
+    for path in [h1, s1, h2, s2, h3, s3]:
         await channel.send(file=discord.File(path))
 
 
