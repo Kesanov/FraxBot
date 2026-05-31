@@ -249,63 +249,47 @@ def render_result(winner, loser, delta, out_path,
     from cards.model import default_avatar
 
     width = 900
-    row_h = 144
+    row_h = 124
     pad = 12
     height = pad * 2 + row_h * 2
     out_w, out_h = 800, height * 800 // width
 
     WIN_BORDER, LOSE_BORDER = "#ffd54f", "#9045CE"
 
-    # class icon + ultimate badge sizes
-    _CLS_ISZ = 80
-    _ULT_ISZ = 56                          # ~70% of class
-    _OVERLAP  = round(_CLS_ISZ * 0.3)     # 24px — how far the badge bites into the class icon
-
     def row(y, p, avatar, border_col, result_emoji, elo_delta):
         avatar      = avatar or default_avatar(p["name"])
-        fac_name    = faction_base(p["faction"])
-        cls_name    = p["faction"].split(": ", 1)[1] if ": " in p["faction"] else None
-        faction_col = FACTION_COLORS.get(fac_name, "#90a4ae")
-        ult_img     = _local_data_uri(_ULTIMATES_DIR, p["ultimate"] + ".png")
-        cls_img     = _local_data_uri(_ULTIMATES_DIR, cls_name + ".png") if cls_name else None
+        faction_col = FACTION_COLORS.get(faction_base(p["faction"]), "#90a4ae")
+        cls_emoji   = faction_emoji(p["faction"])
+        p = {**p, "name": _latinize(p["name"]), "ultimate": _latinize(p["ultimate"])}
         cy  = y + row_h // 2
         acx, ar = 88, 46
         lx  = 210
-        rx  = width - 80   # ELO column x
+        ex  = width - 160   # class emoji column
+        rx  = width - 80    # ELO column
         cid = f"clip_{y}"
-        # class icon sits right of the text area, ~10px from ELO column
-        cls_x = rx - _CLS_ISZ - 10        # = 730
-        cls_y = cy - _CLS_ISZ // 2
-        # ultimate badge: overlaps class at bottom-left corner
-        ult_x = cls_x - _ULT_ISZ + _OVERLAP   # hangs left of class by (ult_isz - overlap)
-        ult_y = cls_y + _CLS_ISZ - _OVERLAP   # hangs below class by (ult_isz - overlap)
-        out = [
+        info = f'{_esc(faction_base(p["faction"]))}  ·  {_esc(p["ultimate"])}'
+        return (
             f'<rect x="20" y="{y}" width="{width-40}" height="{row_h-12}" rx="18" '
             f'{_CELL_FILL} stroke="{border_col}" '
-            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>',
+            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>'
             f'<clipPath id="{cid}"><circle cx="{acx}" cy="{cy}" r="{ar}"/></clipPath>'
             f'<circle cx="{acx}" cy="{cy}" r="{ar+3}" fill="none" stroke="{border_col}" stroke-width="3"/>'
             f'<image x="{acx-ar}" y="{cy-ar}" width="{ar*2}" height="{ar*2}" '
-            f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>',
+            f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>'
             f'<text x="140" y="{cy+15}" font-size="44" font-weight="700" '
-            f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{result_emoji}</text>',
+            f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{result_emoji}</text>'
             f'<text x="{lx}" y="{cy-8}" font-size="34" font-weight="700" '
-            f'fill="#f2eefc">{_esc(_latinize(p["name"])[:25])}</text>',
-            f'<text x="{lx}" y="{cy+20}" font-size="22" font-weight="700" '
-            f'fill="{faction_col}">{_esc(fac_name)}</text>',
-        ]
-        # class icon — no border (so=0)
-        _d_sq_img(out, cls_img, cls_x, cls_y, _CLS_ISZ, 8, _GOLD_EDGE, f"rc_{y}_c", sw=0, so=0)
-        # ultimate badge on top, overlapping bottom-left of class — no border
-        _d_sq_img(out, ult_img, ult_x, ult_y, _ULT_ISZ, 6, _GOLD_EDGE, f"rc_{y}_u", sw=0, so=0)
-        delta_col = "#66bb6a" if elo_delta >= 0 else "#ef5350"
-        out.append(
+            f'fill="#f2eefc">{_esc(p["name"][:30])}</text>'
+            f'<text x="{lx}" y="{cy+28}" font-size="23" font-weight="700" '
+            f'fill="{faction_col}">{info}</text>'
+            f'<text x="{ex}" y="{cy+10}" font-size="35" font-weight="700" '
+            f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{_esc(cls_emoji)}</text>'
             f'<text x="{rx}" y="{cy-2}" font-size="42" font-weight="700" '
             f'fill="#f2eefc" text-anchor="middle">{p["elo"]}</text>'
             f'<text x="{rx}" y="{cy+30}" font-size="24" font-weight="700" '
-            f'fill="{delta_col}" text-anchor="middle">{"+" if elo_delta>=0 else ""}{elo_delta}</text>'
+            f'fill="{"#66bb6a" if elo_delta>=0 else "#ef5350"}" '
+            f'text-anchor="middle">{"+" if elo_delta>=0 else ""}{elo_delta}</text>'
         )
-        return "".join(out)
 
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
