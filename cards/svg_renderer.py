@@ -249,7 +249,7 @@ def render_result(winner, loser, delta, out_path,
     from cards.model import default_avatar
 
     width = 900
-    row_h = 124
+    row_h = 144
     pad = 12
     height = pad * 2 + row_h * 2
     out_w, out_h = 800, height * 800 // width
@@ -257,9 +257,9 @@ def render_result(winner, loser, delta, out_path,
     WIN_BORDER, LOSE_BORDER = "#ffd54f", "#9045CE"
 
     # class icon + ultimate badge sizes
-    _CLS_ISZ = 40
-    _ULT_ISZ = 28                          # ~70% of class
-    _OVERLAP  = round(_CLS_ISZ * 0.3)     # 12px — how far the badge bites into the class icon
+    _CLS_ISZ = 80
+    _ULT_ISZ = 56                          # ~70% of class
+    _OVERLAP  = round(_CLS_ISZ * 0.3)     # 24px — how far the badge bites into the class icon
 
     def row(y, p, avatar, border_col, result_emoji, elo_delta):
         avatar      = avatar or default_avatar(p["name"])
@@ -273,8 +273,8 @@ def render_result(winner, loser, delta, out_path,
         lx  = 210
         rx  = width - 80   # ELO column x
         cid = f"clip_{y}"
-        # class icon sits right of the text area, before the ELO column
-        cls_x = width - 220   # left edge of class icon  (= 680)
+        # class icon sits right of the text area, ~10px from ELO column
+        cls_x = rx - _CLS_ISZ - 10        # = 730
         cls_y = cy - _CLS_ISZ // 2
         # ultimate badge: overlaps class at bottom-left corner
         ult_x = cls_x - _ULT_ISZ + _OVERLAP   # hangs left of class by (ult_isz - overlap)
