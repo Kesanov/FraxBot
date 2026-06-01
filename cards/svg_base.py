@@ -37,8 +37,9 @@ _GOLD_EDGE = '#a9743f'
 _CELL_STROKE_W = 4
 _CELL_STROKE_OPACITY = 0.8
 
-_OUTER_PAD = 20   # horizontal inset and chunk vertical pad for all cards
-_HDR_VPAD  = 16   # vertical inset for header bars
+_OUTER_PAD      = 20   # horizontal inset for header bars and chunk vertical pad
+_HDR_VPAD       = 16   # vertical inset for header bars
+_CELL_OUTER_PAD = 30   # horizontal inset for stat/player cells (+10 vs headers)
 
 RANK_COLORS = {
     "Champion": "#9c1d1d",

@@ -4,14 +4,14 @@ from cards.svg_base import (
     W, _esc, _GOLD_EDGE, _FONT_FAMILY, _EMOJI_FAMILY,
     _ULTIMATES_DIR, _TOWNS_DIR, _local_data_uri,
     _CELL_FILL, _CELL_STROKE_W, _CELL_STROKE_OPACITY,
-    _OUTER_PAD,
+    _OUTER_PAD, _CELL_OUTER_PAD,
 )
 from config import FACTION_COLORS
 
 # ---------------------------------------------------------------------------
 # Stats-card layout constants
 # ---------------------------------------------------------------------------
-_S_INSET   = _OUTER_PAD
+_S_INSET   = _CELL_OUTER_PAD
 _S_HDR_H   = 112
 _S_GAP     = _OUTER_PAD
 _S_SUB_H   = 34
@@ -64,10 +64,10 @@ def _d_stats(parts, cx, y_games, games, winrate, has, fg=13, fw=17):
         return
     wr_col = "#66bb6a" if winrate >= 50 else "#ef5350"
     parts.append(
-        f'<text x="{cx}" y="{y_games}" font-size="{fg}" font-weight="700" '
-        f'fill="#c0b8d8" text-anchor="middle">{_esc(f"{games}x")}</text>'
-        f'<text x="{cx}" y="{y_games + fw + 4}" font-size="{fw}" font-weight="700" '
+        f'<text x="{cx}" y="{y_games}" font-size="{fw}" font-weight="700" '
         f'fill="{wr_col}" text-anchor="middle">{_esc(f"{winrate}%")}</text>'
+        f'<text x="{cx}" y="{y_games + fw + 4}" font-size="{fg}" font-weight="700" '
+        f'fill="#c0b8d8" text-anchor="middle">{_esc(f"{games}x")}</text>'
     )
 
 
@@ -173,10 +173,10 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
             if has:
                 wr_col = "#66bb6a" if wr >= 50 else "#ef5350"
                 parts.append(
-                    f'<text x="{cx}" y="{rcy - 7}" font-size="17" font-weight="700" '
-                    f'fill="#c0b8d8" text-anchor="middle">{g}x</text>'
-                    f'<text x="{cx}" y="{rcy + 23}" font-size="24" font-weight="700" '
+                    f'<text x="{cx}" y="{rcy - 7}" font-size="24" font-weight="700" '
                     f'fill="{wr_col}" text-anchor="middle">{wr}%</text>'
+                    f'<text x="{cx}" y="{rcy + 23}" font-size="17" font-weight="700" '
+                    f'fill="#c0b8d8" text-anchor="middle">{g}x</text>'
                 )
             else:
                 pass
@@ -210,10 +210,10 @@ def _d_class_cell(parts, col, y, r, cls_imgs):
     if has:
         wr_col = "#66bb6a" if r["winrate"] >= 50 else "#ef5350"
         parts.append(
-            f'<text x="{tx}" y="{cy + 8}" font-size="20" font-weight="700" fill="#c0b8d8">'
-            f'{r["games"]}x</text>'
-            f'<text x="{tx}" y="{cy + 40}" font-size="31" font-weight="700" '
+            f'<text x="{tx}" y="{cy + 8}" font-size="31" font-weight="700" '
             f'fill="{wr_col}">{r["winrate"]}%</text>'
+            f'<text x="{tx}" y="{cy + 40}" font-size="20" font-weight="700" fill="#c0b8d8">'
+            f'{r["games"]}x</text>'
         )
     else:
         pass

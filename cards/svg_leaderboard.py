@@ -7,7 +7,7 @@ from cards.model import _latinize, default_avatar
 from cards.svg_base import (
     W, _esc, _lux_bg, _save, _FONT_FAMILY, _EMOJI_FAMILY,
     _CELL_FILL, _GOLD_EDGE, _CELL_STROKE_W, _CELL_STROKE_OPACITY, RANK_COLORS,
-    _OUTER_PAD, _HDR_VPAD,
+    _OUTER_PAD, _HDR_VPAD, _CELL_OUTER_PAD,
 )
 
 
@@ -51,7 +51,7 @@ def render_rows(entries, out_path, scale=1):
         pos = e["position"]
         pc = pos_color.get(pos, "#8a80b0")
         parts.append(
-            f'<rect x="20" y="{y+6}" width="{W-40}" height="{row_h-12}" rx="16" '
+            f'<rect x="{_CELL_OUTER_PAD}" y="{y+6}" width="{W-2*_CELL_OUTER_PAD}" height="{row_h-12}" rx="16" '
             f'{_CELL_FILL} stroke="{_GOLD_EDGE}" '
             f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>'
         )
@@ -137,7 +137,7 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=1):
         cy = y + row_h // 2
         col = FACTION_COLORS.get(r["faction"], "#90a4ae")
         parts.append(
-            f'<rect x="20" y="{y+5}" width="{W-40}" height="{row_h-10}" rx="14" '
+            f'<rect x="{_CELL_OUTER_PAD}" y="{y+5}" width="{W-2*_CELL_OUTER_PAD}" height="{row_h-10}" rx="14" '
             f'{_CELL_FILL} stroke="{col}" stroke-opacity="1" stroke-width="4"/>'
             f'<text x="45" y="{cy+9}" font-size="26" font-weight="700" '
             f'fill="{col}">{_esc(r["faction"])}</text>'
