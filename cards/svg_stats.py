@@ -6,6 +6,7 @@ from cards.svg_base import (
     W, _esc, _save, _FONT_FAMILY, _local_data_uri,
     _ULTIMATES_DIR, _TOWNS_DIR, _GOLD_EDGE,
     _CELL_FILL, _CELL_STROKE_W, _CELL_STROKE_OPACITY,
+    _OUTER_PAD, _HDR_VPAD,
 )
 from cards.svg_primitives import (
     _S_GAP, _S_HDR_H, _S_UCH, _S_COLS_U, _S_FC_H, _S_CCH,
@@ -16,8 +17,8 @@ from cards.svg_primitives import (
 
 def render_stats_header_img(title, out_path, scale=1):
     """Render just one section header bar with equal top/bottom padding."""
-    outer = 10
-    ih    = _S_HDR_H - 16
+    outer = _HDR_VPAD
+    ih    = _S_HDR_H - 2 * _HDR_VPAD
     h     = ih + 2 * outer
     ow    = 800
     oh    = h * ow // W
@@ -25,7 +26,7 @@ def render_stats_header_img(title, out_path, scale=1):
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
         f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">',
-        f'<rect x="5" y="{outer}" width="{W - 10}" height="{ih}" rx="16" '
+        f'<rect x="{_OUTER_PAD}" y="{outer}" width="{W - 2*_OUTER_PAD}" height="{ih}" rx="16" '
         f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W * 2}"/>'
         f'<text x="{W//2}" y="{ty}" font-size="60" font-weight="700" '
         f'fill="#ffd54f" text-anchor="middle">{_esc(title)}</text>',

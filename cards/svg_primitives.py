@@ -4,15 +4,16 @@ from cards.svg_base import (
     W, _esc, _GOLD_EDGE, _FONT_FAMILY, _EMOJI_FAMILY,
     _ULTIMATES_DIR, _TOWNS_DIR, _local_data_uri,
     _CELL_FILL, _CELL_STROKE_W, _CELL_STROKE_OPACITY,
+    _OUTER_PAD,
 )
 from config import FACTION_COLORS
 
 # ---------------------------------------------------------------------------
 # Stats-card layout constants
 # ---------------------------------------------------------------------------
-_S_INSET   = 20
+_S_INSET   = _OUTER_PAD
 _S_HDR_H   = 112
-_S_GAP     = 20
+_S_GAP     = _OUTER_PAD
 _S_SUB_H   = 34
 _S_PAD     = 10
 _S_W_INNER = W - 2 * _S_INSET   # 1000
@@ -75,7 +76,7 @@ def _d_section_header(parts, y, title):
     ih  = _S_HDR_H - 2 * pad
     ty  = y + pad + ih // 2 + 22
     parts.append(
-        f'<rect x="5" y="{y + pad}" width="{W - 10}" height="{ih}" rx="16" '
+        f'<rect x="{_S_INSET}" y="{y + pad}" width="{W - 2*_S_INSET}" height="{ih}" rx="16" '
         f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W * 2}"/>'
         f'<text x="{W//2}" y="{ty}" font-size="60" font-weight="700" '
         f'fill="#ffd54f" text-anchor="middle">{_esc(title)}</text>'

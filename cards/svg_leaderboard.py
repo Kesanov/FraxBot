@@ -7,6 +7,7 @@ from cards.model import _latinize, default_avatar
 from cards.svg_base import (
     W, _esc, _lux_bg, _save, _FONT_FAMILY, _EMOJI_FAMILY,
     _CELL_FILL, _GOLD_EDGE, _CELL_STROKE_W, _CELL_STROKE_OPACITY, RANK_COLORS,
+    _OUTER_PAD, _HDR_VPAD,
 )
 
 
@@ -17,7 +18,7 @@ def render_header(out_path, title="Frax Arena Top12", scale=1):
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
         f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">'
         + _lux_bg()
-        + f'<rect x="20" y="16" width="{W-40}" height="{h-32}" rx="22" '
+        + f'<rect x="{_OUTER_PAD}" y="{_HDR_VPAD}" width="{W-2*_OUTER_PAD}" height="{h-2*_HDR_VPAD}" rx="22" '
           f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W*2}"/>'
         + f'<text x="{int(W*0.2)}" y="{h//2+18}" font-size="54" font-weight="700" font-family="{_EMOJI_FAMILY}" '
           f'fill="#ffd54f" text-anchor="middle">🏆</text>'
@@ -34,7 +35,7 @@ def render_rows(entries, out_path, scale=1):
     """Render a chunk of leaderboard rows (no header). `entries` keep their
     global `position`. Small labels are enlarged and bold for readability."""
     row_h = 95
-    pad = 5
+    pad = _OUTER_PAD
     height = pad * 2 + row_h * len(entries)
     out_w = 800
     out_h = height * out_w // W

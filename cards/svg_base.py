@@ -37,6 +37,9 @@ _GOLD_EDGE = '#a9743f'
 _CELL_STROKE_W = 4
 _CELL_STROKE_OPACITY = 0.8
 
+_OUTER_PAD = 20   # horizontal inset and chunk vertical pad for all cards
+_HDR_VPAD  = 16   # vertical inset for header bars
+
 RANK_COLORS = {
     "Champion": "#9c1d1d",
     "Renegade": "#c56d42",

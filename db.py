@@ -118,13 +118,15 @@ def top_players(limit: int = 10):
 
 
 def faction_stats():
-    """Global per-faction record, sorted by winrate then games (desc)."""
+    """Global per-faction record, mirrors excluded, sorted by winrate then games (desc)."""
     with _conn() as con:
         wins = dict(con.execute(
-            "SELECT winner_faction, COUNT(*) FROM matches GROUP BY winner_faction"
+            "SELECT winner_faction, COUNT(*) FROM matches "
+            "WHERE winner_faction != loser_faction GROUP BY winner_faction"
         ).fetchall())
         losses = dict(con.execute(
-            "SELECT loser_faction, COUNT(*) FROM matches GROUP BY loser_faction"
+            "SELECT loser_faction, COUNT(*) FROM matches "
+            "WHERE winner_faction != loser_faction GROUP BY loser_faction"
         ).fetchall())
     out = []
     for f in FACTIONS:
@@ -137,14 +139,16 @@ def faction_stats():
 
 
 def ultimate_stats():
-    """Global per-ultimate record, sorted by popularity (games desc)."""
+    """Global per-ultimate record, mirrors excluded, sorted by popularity (games desc)."""
     from config import ULTIMATES
     with _conn() as con:
         wins = dict(con.execute(
-            "SELECT winner_ultimate, COUNT(*) FROM matches GROUP BY winner_ultimate"
+            "SELECT winner_ultimate, COUNT(*) FROM matches "
+            "WHERE winner_ultimate != loser_ultimate GROUP BY winner_ultimate"
         ).fetchall())
         losses = dict(con.execute(
-            "SELECT loser_ultimate, COUNT(*) FROM matches GROUP BY loser_ultimate"
+            "SELECT loser_ultimate, COUNT(*) FROM matches "
+            "WHERE winner_ultimate != loser_ultimate GROUP BY loser_ultimate"
         ).fetchall())
     out = []
     for u in ULTIMATES:
@@ -157,15 +161,17 @@ def ultimate_stats():
 
 
 def frax_by_faction():
-    """Frax Essence winrate broken down by faction, in FACTIONS order."""
+    """Frax Essence winrate broken down by faction, mirrors excluded, in FACTIONS order."""
     with _conn() as con:
         wins = dict(con.execute(
             "SELECT winner_faction, COUNT(*) FROM matches "
-            "WHERE winner_ultimate='Frax Essence' GROUP BY winner_faction"
+            "WHERE winner_ultimate='Frax Essence' AND loser_ultimate != 'Frax Essence' "
+            "GROUP BY winner_faction"
         ).fetchall())
         losses = dict(con.execute(
             "SELECT loser_faction, COUNT(*) FROM matches "
-            "WHERE loser_ultimate='Frax Essence' GROUP BY loser_faction"
+            "WHERE loser_ultimate='Frax Essence' AND winner_ultimate != 'Frax Essence' "
+            "GROUP BY loser_faction"
         ).fetchall())
     out = []
     for f in FACTIONS:
@@ -177,12 +183,13 @@ def frax_by_faction():
 
 
 def faction_class_stats():
-    """WR for each (faction, class) pair. Returns {faction: [cls0, cls1, cls2]}."""
+    """WR for each (faction, class) pair, mirrors excluded. Returns {faction: [cls0, cls1, cls2]}."""
     with _conn() as con:
         wins = {}
         for f, ci, cnt in con.execute(
             "SELECT winner_faction, winner_class, COUNT(*) FROM matches "
             "WHERE winner_faction IS NOT NULL AND winner_class IS NOT NULL "
+            "AND NOT (winner_faction = loser_faction AND winner_class = loser_class) "
             "GROUP BY winner_faction, winner_class"
         ):
             wins[(f, ci)] = cnt
@@ -190,6 +197,7 @@ def faction_class_stats():
         for f, ci, cnt in con.execute(
             "SELECT loser_faction, loser_class, COUNT(*) FROM matches "
             "WHERE loser_faction IS NOT NULL AND loser_class IS NOT NULL "
+            "AND NOT (winner_faction = loser_faction AND winner_class = loser_class) "
             "GROUP BY loser_faction, loser_class"
         ):
             losses[(f, ci)] = cnt
@@ -207,13 +215,15 @@ def faction_class_stats():
 
 
 def class_stats():
-    """Global per-class record (Warrior/Warmage/Warlock), original order."""
+    """Global per-class record, mirrors excluded (Warrior/Warmage/Warlock), original order."""
     with _conn() as con:
         wins = dict(con.execute(
-            "SELECT winner_class, COUNT(*) FROM matches GROUP BY winner_class"
+            "SELECT winner_class, COUNT(*) FROM matches "
+            "WHERE winner_class != loser_class GROUP BY winner_class"
         ).fetchall())
         losses = dict(con.execute(
-            "SELECT loser_class, COUNT(*) FROM matches GROUP BY loser_class"
+            "SELECT loser_class, COUNT(*) FROM matches "
+            "WHERE winner_class != loser_class GROUP BY loser_class"
         ).fetchall())
     out = []
     for i, c in enumerate(CLASSES):

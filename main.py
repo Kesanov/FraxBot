@@ -21,6 +21,7 @@ import hashlib
 import os
 import time
 import traceback
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
 import aiohttp
@@ -559,14 +560,16 @@ async def publish_winrate_stats():
 
 
 async def _winrate_daily_loop():
-    """Repost stats cards once every 24 hours."""
-    await asyncio.sleep(24 * 3600)
+    """Repost stats cards once per day at UTC midnight."""
     while True:
+        now = datetime.now(timezone.utc)
+        next_midnight = (now + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        await asyncio.sleep((next_midnight - now).total_seconds())
         try:
             await publish_winrate_stats()
         except Exception:
             traceback.print_exc()
-        await asyncio.sleep(24 * 3600)
 
 
 async def elo_cmd(interaction, player: discord.Member):
