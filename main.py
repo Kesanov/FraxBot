@@ -94,6 +94,18 @@ _chunk_cache: dict[int, str] = {}
 # are rendered once and reused on every daily refresh.
 _stats_header_cache: dict[str, str] = {}
 
+# on_ready fires on every gateway reconnect/resume, not just first launch. This
+# guards the whole one-time init block (command sync, initial leaderboard +
+# stats posts, daily loop) so a reconnect never re-posts or spawns a duplicate
+# loop. Without it, every reconnect would repost the boards and stack another
+# midnight stats loop, producing duplicates.
+_initialized = False
+
+# Serializes stats updates so the daily loop and any future trigger can't race
+# through the delete-then-repost sequence at the same time (mirrors the
+# leaderboard lock).
+_stats_lock = asyncio.Lock()
+
 # Drop pending games the enemy never confirmed after this many seconds.
 PENDING_TTL = 24 * 3600
 
@@ -271,8 +283,7 @@ class PickerView(discord.ui.View):
             content = (
                 f"{g.loser.mention} use {CONFIRM_EMOJI} to confirm within 5 minutes")
 
-        channel = client.get_channel(config.REPORTS_CHANNEL_ID) or \
-            await client.fetch_channel(config.REPORTS_CHANNEL_ID)
+        channel = await _resolve_channel(config.REPORTS_CHANNEL_ID)
         if channel is None:
             await interaction.followup.send(
                 "⚠️ Reports channel not found — check REPORTS_CHANNEL_ID.", ephemeral=True)
@@ -481,26 +492,40 @@ def _cleanup(paths):
             pass
 
 
+async def _resolve_channel(channel_id):
+    """Look up a channel by id (cache first, REST fallback), or None if unset."""
+    if not channel_id:
+        return None
+    return client.get_channel(channel_id) or await client.fetch_channel(channel_id)
+
+
+async def _purge_bot_messages(channel, limit):
+    """Delete the bot's own recent messages so a repost replaces the old set."""
+    async for msg in channel.history(limit=limit):
+        if msg.author.id == client.user.id:
+            try:
+                await msg.delete()
+            except discord.HTTPException:
+                pass
+
+
+async def _post_files(channel, paths):
+    """Post each image path as its own stacked message."""
+    for p in paths:
+        await channel.send(file=discord.File(p))
+
+
 async def publish_leaderboard():
     """Repost the ladder (header + row chunks + faction table) as stacked
     messages in the leaderboard channel, replacing the bot's previous set."""
-    if not config.LEADERBOARD_CHANNEL_ID:
-        return
-    channel = client.get_channel(config.LEADERBOARD_CHANNEL_ID) or \
-        await client.fetch_channel(config.LEADERBOARD_CHANNEL_ID)
+    channel = await _resolve_channel(config.LEADERBOARD_CHANNEL_ID)
     if channel is None:
         return
     async with _leaderboard_lock:
         paths = await build_leaderboard_images("auto")
         # remove the bot's previous leaderboard messages so order stays correct
-        async for msg in channel.history(limit=30):
-            if msg.author.id == client.user.id:
-                try:
-                    await msg.delete()
-                except discord.HTTPException:
-                    pass
-        for p in paths:
-            await channel.send(file=discord.File(p))
+        await _purge_bot_messages(channel, limit=30)
+        await _post_files(channel, paths)
         _cleanup(paths)
 
 
@@ -519,44 +544,35 @@ async def _render_stats_header(title: str) -> str:
 
 async def publish_winrate_stats():
     """Post (or repost) the 6 stats card images into the winrate channel."""
-    if not config.WINRATE_CHANNEL_ID:
-        return
-    channel = client.get_channel(config.WINRATE_CHANNEL_ID) or \
-        await client.fetch_channel(config.WINRATE_CHANNEL_ID)
+    channel = await _resolve_channel(config.WINRATE_CHANNEL_ID)
     if channel is None:
         return
 
-    ult_rows  = db.ultimate_stats()
-    fac_rows  = db.faction_stats()
-    cls_rows  = db.class_stats()
-    frax_rows = db.frax_by_faction()
-    fc_rows   = db.faction_class_stats()
+    async with _stats_lock:
+        ult_rows  = db.ultimate_stats()
+        fac_rows  = db.faction_stats()
+        cls_rows  = db.class_stats()
+        frax_rows = db.frax_by_faction()
+        fc_rows   = db.faction_class_stats()
 
-    d    = config.CACHE_DIR
-    loop = asyncio.get_event_loop()
+        d    = config.CACHE_DIR
+        loop = asyncio.get_event_loop()
 
-    h1 = await _render_stats_header("Ultimate Winrate")
-    s1 = await loop.run_in_executor(None, renderer.render_ult_section_img,
-                                    ult_rows, frax_rows, os.path.join(d, "stats_s1.webp"))
-    await asyncio.sleep(2)
-    h2 = await _render_stats_header("Faction Winrate")
-    s2 = await loop.run_in_executor(None, renderer.render_faction_section_img,
-                                    fac_rows, fc_rows, os.path.join(d, "stats_s2.webp"))
-    await asyncio.sleep(2)
-    h3 = await _render_stats_header("Class Winrate")
-    s3 = await loop.run_in_executor(None, renderer.render_class_section_img,
-                                    cls_rows, os.path.join(d, "stats_s3.webp"))
+        h1 = await _render_stats_header("Ultimate Winrate")
+        s1 = await loop.run_in_executor(None, renderer.render_ult_section_img,
+                                        ult_rows, frax_rows, os.path.join(d, "stats_s1.webp"))
+        await asyncio.sleep(2)
+        h2 = await _render_stats_header("Faction Winrate")
+        s2 = await loop.run_in_executor(None, renderer.render_faction_section_img,
+                                        fac_rows, fc_rows, os.path.join(d, "stats_s2.webp"))
+        await asyncio.sleep(2)
+        h3 = await _render_stats_header("Class Winrate")
+        s3 = await loop.run_in_executor(None, renderer.render_class_section_img,
+                                        cls_rows, os.path.join(d, "stats_s3.webp"))
 
-    # delete the bot's previous stats messages before reposting
-    async for msg in channel.history(limit=20):
-        if msg.author.id == client.user.id:
-            try:
-                await msg.delete()
-            except discord.HTTPException:
-                pass
-
-    for path in [h1, s1, h2, s2, h3, s3]:
-        await channel.send(file=discord.File(path))
+        # delete the bot's previous stats messages before reposting
+        await _purge_bot_messages(channel, limit=20)
+        await _post_files(channel, [h1, s1, h2, s2, h3, s3])
 
 
 async def _winrate_daily_loop():
@@ -597,6 +613,17 @@ async def elo_cmd(interaction, player: discord.Member):
 
 async def on_ready():
     db.init_db()
+    mode = " [TEST MODE — no confirmation, test DB]" if config.TEST_MODE else ""
+    print(f"Logged in as {client.user} ({client.user.id}){mode}")
+
+    # on_ready re-fires on every reconnect/resume. Everything below posts to
+    # channels or registers commands and must run exactly once per process, or
+    # reconnects would repost the boards/stats and stack duplicate daily loops.
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+
     # Register commands per-guild (instant) and clear the global scope so commands
     # don't show up twice (once global + once per guild).
     for guild in client.guilds:
@@ -617,8 +644,6 @@ async def on_ready():
     except Exception:
         traceback.print_exc()
     asyncio.create_task(_winrate_daily_loop())
-    mode = " [TEST MODE — no confirmation, test DB]" if config.TEST_MODE else ""
-    print(f"Logged in as {client.user} ({client.user.id}){mode}")
 
 
 if __name__ == "__main__":
