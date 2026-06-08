@@ -37,7 +37,7 @@ _FONT_PATHS = [
     if os.path.exists(os.path.join(_FONT_DIR, fname))
 ]
 
-_CELL_FILL = 'fill="#45413d" fill-opacity="1.0"'
+_CELL_FILL = 'fill="#3d3d3d" fill-opacity="1.0"'
 _GOLD_EDGE = '#a9743f'
 _CELL_STROKE_W = 4
 _CELL_STROKE_OPACITY = 1.
@@ -49,7 +49,7 @@ _CELL_STROKE_OPACITY = 1.
 _DEFS = (
     '<defs>'
     '<linearGradient id="goldEdge" x1="0" y1="0" x2="0" y2="1">'
-    '<stop offset="0" stop-color="#f0d18a"/>'
+    '<stop offset="0" stop-color="#cca263"/>'
     '<stop offset="0.5" stop-color="#a9743f"/>'
     '<stop offset="1" stop-color="#6e4523"/>'
     '</linearGradient>'
@@ -78,7 +78,7 @@ def _cell(x, y, w, h, rx, color=_GOLD_EDGE, width=_CELL_STROKE_W):
         f'stroke-width="{width}" filter="url(#cellShadow)"/>'
         f'<rect x="{x + inset}" y="{y + inset}" width="{w - 2 * inset}" '
         f'height="{h - 2 * inset}" rx="{ir}" fill="none" '
-        f'stroke="{_BEVEL_HILITE}" stroke-opacity="0.35" stroke-width="1"/>'
+        f'stroke="{_BEVEL_HILITE}" stroke-opacity="0.25" stroke-width="1"/>'
     )
 
 _OUTER_PAD      = 20   # horizontal inset for header bars and chunk vertical pad
