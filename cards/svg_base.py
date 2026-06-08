@@ -37,10 +37,10 @@ _FONT_PATHS = [
     if os.path.exists(os.path.join(_FONT_DIR, fname))
 ]
 
-_CELL_FILL = 'fill="#1c1410" fill-opacity="0.8"'
+_CELL_FILL = 'fill="#1c1410" fill-opacity="0.65"'
 _GOLD_EDGE = '#a9743f'
 _CELL_STROKE_W = 4
-_CELL_STROKE_OPACITY = 0.8
+_CELL_STROKE_OPACITY = 1.
 
 
 def _cell_border(color=_GOLD_EDGE, width=_CELL_STROKE_W):
@@ -96,7 +96,7 @@ _TEXT_FONT_PATHS = {
     ("400", False): "CrimsonPro-Regular.ttf",
     ("400", True):  "CrimsonPro-Italic.ttf",
 }
-_EMOJI_FONT_FILE = "NotoColorEmoji.ttf"
+_EMOJI_FONT_PATH = os.path.join(_FONT_DIR, "NotoColorEmoji.ttf")
 
 
 def _text_font_path(weight, italic):
@@ -111,20 +111,15 @@ def _pil_font(path, size):
     return ImageFont.truetype(path, int(size))
 
 
-def _emoji_clusters(seg):
-    """Approximate number of rendered emoji glyphs in a run; ZWJ sequences and
-    keycaps collapse to one. Color emoji advance roughly one em (square)."""
-    return max(1, sum(1 for c in seg if c not in "‍" and not (
-        "︀" <= c <= "️")))
-
-
 def _run_width(is_emoji, seg, size, weight, italic):
-    if is_emoji:
-        return _emoji_clusters(seg) * size  # color emoji ≈ square em advance
+    """Advance width of a run, measured with the same font resvg will use, so
+    adjacent runs (e.g. 🔥 + streak number) don't overlap."""
+    path = _EMOJI_FONT_PATH if is_emoji else _text_font_path(weight, italic)
     try:
-        return _pil_font(_text_font_path(weight, italic), size).getlength(seg)
+        return _pil_font(path, size).getlength(seg)
     except Exception:
-        return len(seg) * size * 0.5
+        # Color emoji advance ≈ 1.25 em; plain text ≈ 0.5 em per char.
+        return len(seg) * size * (1.25 if is_emoji else 0.5)
 
 
 def _font_runs(text):
