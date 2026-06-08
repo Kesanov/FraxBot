@@ -1,9 +1,9 @@
 """Layout constants and low-level SVG drawing helpers for stats cards."""
 
 from cards.svg_base import (
-    W, _esc, _GOLD_EDGE, _FONT_FAMILY, _EMOJI_FAMILY,
+    W, _esc, _GOLD_EDGE, render_text,
     _ULTIMATES_DIR, _TOWNS_DIR, _local_data_uri,
-    _CELL_FILL, _CELL_STROKE_W, _CELL_STROKE_OPACITY,
+    _cell_border, _CELL_STROKE_W,
     _OUTER_PAD, _CELL_OUTER_PAD,
 )
 from config import FACTION_COLORS
@@ -64,10 +64,9 @@ def _d_stats(parts, cx, y_games, games, winrate, has, fg=13, fw=17):
         return
     wr_col = "#66bb6a" if winrate >= 50 else "#ef5350"
     parts.append(
-        f'<text x="{cx}" y="{y_games}" font-size="{fw}" font-weight="700" '
-        f'fill="{wr_col}" text-anchor="middle">{_esc(f"{winrate}%")}</text>'
-        f'<text x="{cx}" y="{y_games + fw + 4}" font-size="{fg}" font-weight="700" '
-        f'fill="#c0b8d8" text-anchor="middle">{_esc(f"{games}x")}</text>'
+        render_text(cx, y_games, f"{winrate}%", fw, wr_col, anchor="middle")
+        + render_text(cx, y_games + fw + 4, f"{games}x", fg, "#c0b8d8",
+                      anchor="middle")
     )
 
 
@@ -77,24 +76,22 @@ def _d_section_header(parts, y, title):
     ty  = y + pad + ih // 2 + 22
     parts.append(
         f'<rect x="{_S_INSET}" y="{y + pad}" width="{W - 2*_S_INSET}" height="{ih}" rx="16" '
-        f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W * 2}"/>'
-        f'<text x="{W//2}" y="{ty}" font-size="60" font-weight="700" '
-        f'fill="#ffd54f" text-anchor="middle">{_esc(title)}</text>'
+        f'{_cell_border(width=_CELL_STROKE_W * 2)}/>'
+        + render_text(W//2, ty, title, 60, "#ffd54f", anchor="middle")
     )
 
 
 def _d_section_bg(parts, y, h):
     parts.append(
         f'<rect x="{_S_INSET}" y="{y}" width="{_S_W_INNER}" height="{h}" rx="18" '
-        f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="1" stroke-width="4"/>'
+        f'{_cell_border()}/>'
     )
 
 
 def _d_sub_header(parts, y, title):
     ty = y + _S_SUB_H // 2 + 7
     parts.append(
-        f'<text x="{W//2}" y="{ty}" font-size="15" font-weight="700" '
-        f'fill="#c9a7ff" text-anchor="middle" font-style="italic">{_esc(title)}</text>'
+        render_text(W//2, ty, title, 15, "#c9a7ff", anchor="middle", italic=True)
     )
 
 
@@ -173,10 +170,9 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
             if has:
                 wr_col = "#66bb6a" if wr >= 50 else "#ef5350"
                 parts.append(
-                    f'<text x="{cx}" y="{rcy - 7}" font-size="24" font-weight="700" '
-                    f'fill="{wr_col}" text-anchor="middle">{wr}%</text>'
-                    f'<text x="{cx}" y="{rcy + 23}" font-size="17" font-weight="700" '
-                    f'fill="#c0b8d8" text-anchor="middle">{g}x</text>'
+                    render_text(cx, rcy - 7, f"{wr}%", 24, wr_col, anchor="middle")
+                    + render_text(cx, rcy + 23, f"{g}x", 17, "#c0b8d8",
+                                  anchor="middle")
                 )
             else:
                 pass
@@ -203,17 +199,12 @@ def _d_class_cell(parts, col, y, r, cls_imgs):
     has = r["games"] > 0
     _d_sq_img(parts, cls_imgs.get(r["class"]), ix, y + _S_PAD, isz, 12,
               _GOLD_EDGE, f"cls{col}", sw=0)
-    parts.append(
-        f'<text x="{tx}" y="{cy - 18}" font-size="30" font-weight="700" '
-        f'fill="#f2eefc">{_esc(r["class"])}</text>'
-    )
+    parts.append(render_text(tx, cy - 18, r["class"], 30, "#f2eefc"))
     if has:
         wr_col = "#66bb6a" if r["winrate"] >= 50 else "#ef5350"
         parts.append(
-            f'<text x="{tx}" y="{cy + 8}" font-size="31" font-weight="700" '
-            f'fill="{wr_col}">{r["winrate"]}%</text>'
-            f'<text x="{tx}" y="{cy + 40}" font-size="20" font-weight="700" fill="#c0b8d8">'
-            f'{r["games"]}x</text>'
+            render_text(tx, cy + 8, f'{r["winrate"]}%', 31, wr_col)
+            + render_text(tx, cy + 40, f'{r["games"]}x', 20, "#c0b8d8")
         )
     else:
         pass

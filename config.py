@@ -136,16 +136,18 @@ FACTION_COLORS = {
 
 def rank_title(elo: int) -> str:
     """Map an ELO value to a display rank title."""
+    if elo >= 2000:
+        return "Seraph"
     if elo >= 1800:
         return "Champion"
     if elo >= 1600:
         return "Renegade"
     if elo >= 1400:
         return "Inquisitor"
-    if elo >= 1250:
+    if elo >= 1200:
         return "Paladin"
-    if elo >= 1100:
+    if elo >= 1000:
         return "Knight"
-    if elo >= 950:
+    if elo >= 800:
         return "Squire"
     return "LandLord"

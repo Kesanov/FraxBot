@@ -5,8 +5,8 @@ import asyncio
 from config import FACTION_COLORS, faction_base, faction_emoji
 from cards.model import _latinize, default_avatar
 from cards.svg_base import (
-    W, _esc, _lux_bg, _save, _FONT_FAMILY, _EMOJI_FAMILY,
-    _CELL_FILL, _GOLD_EDGE, _CELL_STROKE_W, _CELL_STROKE_OPACITY, RANK_COLORS,
+    W, _esc, _lux_bg, _save, _FONT_FAMILY, render_text,
+    _cell_border, _GOLD_EDGE, _CELL_STROKE_W, RANK_COLORS,
     _OUTER_PAD, _HDR_VPAD, _CELL_OUTER_PAD,
 )
 
@@ -19,13 +19,10 @@ def render_header(out_path, title="Frax Arena Top12", scale=1):
         f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">'
         + _lux_bg()
         + f'<rect x="{_OUTER_PAD}" y="{_HDR_VPAD}" width="{W-2*_OUTER_PAD}" height="{h-2*_HDR_VPAD}" rx="22" '
-          f'{_CELL_FILL} stroke="{_GOLD_EDGE}" stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W*2}"/>'
-        + f'<text x="{int(W*0.2)}" y="{h//2+18}" font-size="54" font-weight="700" font-family="{_EMOJI_FAMILY}" '
-          f'fill="#ffd54f" text-anchor="middle">🏆</text>'
-        + f'<text x="{W//2}" y="{h//2+13}" font-size="54" font-weight="700" '
-          f'fill="#ffd54f" text-anchor="middle">{_esc(title)}</text>'
-        + f'<text x="{int(W*0.8)}" y="{h//2+18}" font-size="54" font-weight="700" font-family="{_EMOJI_FAMILY}" '
-          f'fill="#ffd54f" text-anchor="middle">🏆</text>'
+          f'{_cell_border(width=_CELL_STROKE_W*2)}/>'
+        + render_text(int(W*0.2), h//2+18, "🏆", 54, "#ffd54f", anchor="middle")
+        + render_text(W//2, h//2+13, title, 54, "#ffd54f", anchor="middle")
+        + render_text(int(W*0.8), h//2+18, "🏆", 54, "#ffd54f", anchor="middle")
         + '</svg>'
     )
     return _save(svg, out_path, scale)
@@ -52,13 +49,9 @@ def render_rows(entries, out_path, scale=1):
         pc = pos_color.get(pos, "#8a80b0")
         parts.append(
             f'<rect x="{_CELL_OUTER_PAD}" y="{y+6}" width="{W-2*_CELL_OUTER_PAD}" height="{row_h-12}" rx="16" '
-            f'{_CELL_FILL} stroke="{_GOLD_EDGE}" '
-            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>'
+            f'{_cell_border()}/>'
         )
-        parts.append(
-            f'<text x="72" y="{cy+12}" font-size="36" font-weight="700" '
-            f'fill="{pc}" text-anchor="middle">#{pos}</text>'
-        )
+        parts.append(render_text(72, cy+12, f"#{pos}", 36, pc, anchor="middle"))
         cid = f"clip_{pos}"
         parts.append(
             f'<clipPath id="{cid}"><circle cx="160" cy="{cy}" r="34"/></clipPath>'
@@ -71,17 +64,14 @@ def render_rows(entries, out_path, scale=1):
         name_x = 215
         name_col = pc if pos in pos_color else "#f2eefc"
         parts.append(
-            f'<text x="{name_x}" y="{cy-2}" font-size="30" font-weight="700" '
-            f'fill="{name_col}">{_esc(e["name"][:21])}</text>'
-            f'<text x="{name_x}" y="{cy+26}" font-size="19" font-weight="700" '
-            f'fill="{RANK_COLORS.get(e["rank"], "#9a90c0")}">{_esc(e["rank"])}</text>'
+            render_text(name_x, cy-2, e["name"][:21], 30, name_col)
+            + render_text(name_x, cy+26, e["rank"], 19,
+                          RANK_COLORS.get(e["rank"], "#9a90c0"))
         )
         if pos in (1, 2, 3):
             medal = {1: "🥇", 2: "🥈", 3: "🥉"}[pos]
-            parts.append(
-                f'<text x="186" y="{cy+38}" font-size="39" font-weight="700" '
-                f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{medal}</text>'
-            )
+            parts.append(render_text(186, cy+38, medal, 39, "#ffd54f",
+                                     anchor="middle"))
         cols = [
             (str(e["elo"]), "ELO", "#80d8ff"),
             (f'{e["winrate"]}%', "WINRATE", "#f2eefc"),
@@ -91,29 +81,13 @@ def render_rows(entries, out_path, scale=1):
         cx = W - 510
         for val, lab, col in cols:
             parts.append(
-                f'<text x="{cx}" y="{cy-2}" font-size="27" font-weight="700" '
-                f'fill="{col}" text-anchor="middle">{_esc(val)}</text>'
-                f'<text x="{cx}" y="{cy+24}" font-size="18" font-weight="700" '
-                f'fill="#9a90c0" text-anchor="middle">{lab}</text>'
+                render_text(cx, cy-2, val, 27, col, anchor="middle")
+                + render_text(cx, cy+24, lab, 18, "#9a90c0", anchor="middle")
             )
             cx += 100
         streak = e.get("streak", "–")
-        if len(streak) > 1:
-            parts.append(
-                f'<text x="{cx-14}" y="{cy-2}" font-size="27" font-weight="700" '
-                f'font-family="{_EMOJI_FAMILY}" fill="#ffab40" text-anchor="middle">{_esc(streak[0])}</text>'
-                f'<text x="{cx+14}" y="{cy-2}" font-size="27" font-weight="700" '
-                f'fill="#ffab40" text-anchor="middle">{_esc(streak[1:])}</text>'
-            )
-        else:
-            parts.append(
-                f'<text x="{cx}" y="{cy-2}" font-size="27" font-weight="700" '
-                f'fill="#ffab40" text-anchor="middle">{_esc(streak)}</text>'
-            )
-        parts.append(
-            f'<text x="{cx}" y="{cy+24}" font-size="18" font-weight="700" '
-            f'fill="#9a90c0" text-anchor="middle">STREAK</text>'
-        )
+        parts.append(render_text(cx, cy-2, streak, 27, "#ffab40", anchor="middle"))
+        parts.append(render_text(cx, cy+24, "STREAK", 18, "#9a90c0", anchor="middle"))
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
 
@@ -129,8 +103,7 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=1):
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
         f'viewBox="0 0 {W} {height}" font-family="{_FONT_FAMILY}">',
         f'<rect width="{W}" height="{height}" fill="#14101f"/>',
-        f'<text x="40" y="46" font-size="34" font-weight="700" fill="#ffd54f">'
-        f'{_esc(title)}</text>',
+        render_text(40, 46, title, 34, "#ffd54f"),
     ]
     for idx, r in enumerate(rows):
         y = title_h + idx * row_h
@@ -138,9 +111,8 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=1):
         col = FACTION_COLORS.get(r["faction"], "#90a4ae")
         parts.append(
             f'<rect x="{_CELL_OUTER_PAD}" y="{y+5}" width="{W-2*_CELL_OUTER_PAD}" height="{row_h-10}" rx="14" '
-            f'{_CELL_FILL} stroke="{col}" stroke-opacity="1" stroke-width="4"/>'
-            f'<text x="45" y="{cy+9}" font-size="26" font-weight="700" '
-            f'fill="{col}">{_esc(r["faction"])}</text>'
+            f'{_cell_border(color=col)}/>'
+            + render_text(45, cy+9, r["faction"], 26, col)
         )
         has = r["games"] > 0
         cols = [
@@ -151,10 +123,8 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=1):
         cx = W - 300
         for val, lab in cols:
             parts.append(
-                f'<text x="{cx}" y="{cy-2}" font-size="24" font-weight="700" '
-                f'fill="#f2eefc" text-anchor="middle">{_esc(val)}</text>'
-                f'<text x="{cx}" y="{cy+20}" font-size="16" font-weight="700" '
-                f'fill="#9a90c0" text-anchor="middle">{lab}</text>'
+                render_text(cx, cy-2, val, 24, "#f2eefc", anchor="middle")
+                + render_text(cx, cy+20, lab, 16, "#9a90c0", anchor="middle")
             )
             cx += 100
     parts.append("</svg>")
@@ -183,28 +153,23 @@ def render_result(winner, loser, delta, out_path,
         ex  = width - 160
         rx  = width - 80
         cid = f"clip_{y}"
-        info = f'{_esc(faction_base(p["faction"]))}  ·  {_esc(p["ultimate"])}'
+        info = f'{faction_base(p["faction"])}  ·  {p["ultimate"]}'
+        delta_txt = f'{"+" if elo_delta>=0 else ""}{elo_delta}'
         return (
             f'<rect x="20" y="{y}" width="{width-40}" height="{row_h-12}" rx="18" '
-            f'{_CELL_FILL} stroke="{border_col}" '
-            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{_CELL_STROKE_W}"/>'
+            f'{_cell_border(color=border_col)}/>'
             f'<clipPath id="{cid}"><circle cx="{acx}" cy="{cy}" r="{ar}"/></clipPath>'
             f'<circle cx="{acx}" cy="{cy}" r="{ar+3}" fill="none" stroke="{border_col}" stroke-width="3"/>'
             f'<image x="{acx-ar}" y="{cy-ar}" width="{ar*2}" height="{ar*2}" '
             f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>'
-            f'<text x="140" y="{cy+15}" font-size="44" font-weight="700" '
-            f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{result_emoji}</text>'
-            f'<text x="{lx}" y="{cy-8}" font-size="34" font-weight="700" '
-            f'fill="#f2eefc">{_esc(p["name"][:30])}</text>'
-            f'<text x="{lx}" y="{cy+28}" font-size="23" font-weight="700" '
-            f'fill="{faction_col}">{info}</text>'
-            f'<text x="{ex}" y="{cy+10}" font-size="35" font-weight="700" '
-            f'font-family="{_EMOJI_FAMILY}" text-anchor="middle">{_esc(cls_emoji)}</text>'
-            f'<text x="{rx}" y="{cy-2}" font-size="42" font-weight="700" '
-            f'fill="#f2eefc" text-anchor="middle">{p["elo"]}</text>'
-            f'<text x="{rx}" y="{cy+30}" font-size="24" font-weight="700" '
-            f'fill="{"#66bb6a" if elo_delta>=0 else "#ef5350"}" '
-            f'text-anchor="middle">{"+" if elo_delta>=0 else ""}{elo_delta}</text>'
+            + render_text(140, cy+15, result_emoji, 44, "#f2eefc", anchor="middle")
+            + render_text(lx, cy-8, p["name"][:30], 34, "#f2eefc")
+            + render_text(lx, cy+28, info, 23, faction_col)
+            + render_text(ex, cy+10, cls_emoji, 35, "#f2eefc", anchor="middle")
+            + render_text(rx, cy-2, p["elo"], 42, "#f2eefc", anchor="middle")
+            + render_text(rx, cy+30, delta_txt, 24,
+                          "#66bb6a" if elo_delta >= 0 else "#ef5350",
+                          anchor="middle")
         )
 
     svg = (
@@ -245,38 +210,35 @@ def render_elo_curve(out_path, k=96, scale=2):
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'font-family="{_FONT_FAMILY}">',
         f'<rect width="{width}" height="{height}" fill="#14101f"/>',
-        f'<text x="{width//2}" y="44" font-size="30" font-weight="700" '
-        f'fill="#ffd54f" text-anchor="middle">ELO change per game (K={k})</text>',
+        render_text(width//2, 44, f"ELO change per game (K={k})", 30,
+                    "#ffd54f", anchor="middle"),
     ]
     for v in (0, 25, 50, 75, 100):
         gy = Y(v)
         parts.append(
             f'<line x1="{left}" y1="{gy:.1f}" x2="{left+pw}" y2="{gy:.1f}" '
             f'stroke="#ffffff" stroke-opacity="0.08"/>'
-            f'<text x="{left-12}" y="{gy+6:.1f}" font-size="18" font-weight="700" '
-            f'fill="#9a90c0" text-anchor="end">{v}</text>'
+            + render_text(left-12, f"{gy+6:.1f}", v, 18, "#9a90c0", anchor="end")
         )
     for d in (-500, -250, 0, 250, 500):
         gx = X(d)
         parts.append(
             f'<line x1="{gx:.1f}" y1="{top}" x2="{gx:.1f}" y2="{top+ph}" '
             f'stroke="#ffffff" stroke-opacity="0.08"/>'
-            f'<text x="{gx:.1f}" y="{top+ph+30}" font-size="18" font-weight="700" '
-            f'fill="#9a90c0" text-anchor="middle">{"+" if d>0 else ""}{d}</text>'
+            + render_text(f"{gx:.1f}", top+ph+30, f'{"+" if d>0 else ""}{d}', 18,
+                          "#9a90c0", anchor="middle")
         )
     parts.append(
-        f'<text x="{left+pw//2}" y="{height-22}" font-size="20" font-weight="700" '
-        f'fill="#c9a7ff" text-anchor="middle">Your ELO − Opponent ELO</text>'
+        render_text(left+pw//2, height-22, "Your ELO − Opponent ELO", 20,
+                    "#c9a7ff", anchor="middle")
     )
     parts.append(f'<polyline points="{win}" fill="none" stroke="#66bb6a" stroke-width="4"/>')
     parts.append(f'<polyline points="{loss}" fill="none" stroke="#ef5350" stroke-width="4"/>')
     parts.append(
         f'<rect x="{left+20}" y="{top+10}" width="20" height="20" fill="#66bb6a"/>'
-        f'<text x="{left+48}" y="{top+27}" font-size="20" font-weight="700" '
-        f'fill="#f2eefc">If you win</text>'
-        f'<rect x="{left+20}" y="{top+40}" width="20" height="20" fill="#ef5350"/>'
-        f'<text x="{left+48}" y="{top+57}" font-size="20" font-weight="700" '
-        f'fill="#f2eefc">If you lose</text>'
+        + render_text(left+48, top+27, "If you win", 20, "#f2eefc")
+        + f'<rect x="{left+20}" y="{top+40}" width="20" height="20" fill="#ef5350"/>'
+        + render_text(left+48, top+57, "If you lose", 20, "#f2eefc")
     )
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)

@@ -11,10 +11,10 @@ from config import PREVIEW_DIR, ELO_K
 from cards import model, svg_renderer as renderer
 
 SAMPLE_PLAYERS = [
-    {"user_id": "1", "name": "𝕲𝖗𝖞𝖜",       "elo": 1672, "wins": 41, "losses": 9,  "streak": 7},
-    {"user_id": "2", "name": "中文",        "elo": 1540, "wins": 33, "losses": 14, "streak": 3},
-    {"user_id": "3", "name": "Maрkal",     "elo": 1488, "wins": 28, "losses": 16, "streak": 1},
-    {"user_id": "4", "name": "Isabel",     "elo": 1330, "wins": 22, "losses": 18, "streak": 0},
+    {"user_id": "1", "name": "𝕲𝖗𝖞𝖜",       "elo": 2072, "wins": 41, "losses": 9,  "streak": 7},
+    {"user_id": "2", "name": "中文",        "elo": 1840, "wins": 33, "losses": 14, "streak": 3},
+    {"user_id": "3", "name": "Maрkal",     "elo": 1688, "wins": 28, "losses": 16, "streak": 1},
+    {"user_id": "4", "name": "Isabel",     "elo": 1430, "wins": 22, "losses": 18, "streak": 0},
     {"user_id": "5", "name": "Raelag",     "elo": 1275, "wins": 19, "losses": 17, "streak": -2},
     {"user_id": "6", "name": "Kujin",      "elo": 1180, "wins": 15, "losses": 15, "streak": 2},
     {"user_id": "7", "name": "Wulfstan",   "elo": 1095, "wins": 11, "losses": 14, "streak": -1},
@@ -50,15 +50,6 @@ if __name__ == "__main__":
         n = i // 4 + 1
         out = os.path.join(PREVIEW_DIR, f"lb_chunk{n}.jpg")
         print(f"chunk{n} ->", renderer.render_rows(entries[i:i + 4], out))
-    print("factions ->", renderer.render_faction_table(
-        SAMPLE_FACTIONS, os.path.join(PREVIEW_DIR, "lb_factions.jpg")))
-    res = renderer.render_result(
-        SAMPLE_WINNER, SAMPLE_LOSER, SAMPLE_DELTA,
-        os.path.join(PREVIEW_DIR, "result.jpg"),
-        winner_avatar=model.default_avatar(SAMPLE_WINNER["name"]),
-        loser_avatar=model.default_avatar(SAMPLE_LOSER["name"]),
-    )
-    print(f"result      -> {res}")
     print("elo curve ->", renderer.render_elo_curve(
         os.path.join(PREVIEW_DIR, "elo_curve.jpg"), k=ELO_K))
     print(f"\nOpen the files in {PREVIEW_DIR}")

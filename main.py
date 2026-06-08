@@ -18,9 +18,9 @@ Flow:
 import asyncio
 import base64
 import hashlib
+import logging
 import os
 import time
-import traceback
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
@@ -32,6 +32,15 @@ import config
 import db
 from cards import model
 from cards import svg_renderer as renderer
+
+# Log to log.txt (and still echo to the console) so a crash leaves a trace.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.FileHandler("log.txt", encoding="utf-8"),
+              logging.StreamHandler()],
+)
+log = logging.getLogger("fraxbot")
 
 CONFIRM_EMOJI = "👍"
 DENY_EMOJI = "👎"
@@ -309,7 +318,7 @@ class PickerView(discord.ui.View):
                 try:
                     await publish_leaderboard()
                 except Exception:
-                    traceback.print_exc()
+                    log.exception("leaderboard refresh failed")
             return
 
         g.message = msg
@@ -393,7 +402,7 @@ async def confirm_game(game: PendingGame):
         try:
             await publish_leaderboard()
         except Exception:
-            traceback.print_exc()
+            log.exception("leaderboard refresh failed")
 
 
 async def defeated(interaction, enemy: discord.Member):
@@ -585,7 +594,7 @@ async def _winrate_daily_loop():
         try:
             await publish_winrate_stats()
         except Exception:
-            traceback.print_exc()
+            log.exception("daily stats refresh failed")
 
 
 async def elo_cmd(interaction, player: discord.Member):
@@ -614,7 +623,7 @@ async def elo_cmd(interaction, player: discord.Member):
 async def on_ready():
     db.init_db()
     mode = " [TEST MODE — no confirmation, test DB]" if config.TEST_MODE else ""
-    print(f"Logged in as {client.user} ({client.user.id}){mode}")
+    log.info("Logged in as %s (%s)%s", client.user, client.user.id, mode)
 
     # on_ready re-fires on every reconnect/resume. Everything below posts to
     # channels or registers commands and must run exactly once per process, or
@@ -634,15 +643,15 @@ async def on_ready():
     try:
         await _prerender_header()
     except Exception:
-        traceback.print_exc()
+        log.exception("header prerender failed")
     try:
         await publish_leaderboard()
     except Exception:
-        traceback.print_exc()
+        log.exception("initial leaderboard failed")
     try:
         await publish_winrate_stats()
     except Exception:
-        traceback.print_exc()
+        log.exception("initial stats failed")
     asyncio.create_task(_winrate_daily_loop())
 
 
@@ -654,12 +663,19 @@ if __name__ == "__main__":
     for attempt in range(1, len(delays) + 2):
         _make_client()
         try:
-            client.run(config.DISCORD_TOKEN)
+            # log_handler=None: route discord.py's logs through our root config
+            # (basicConfig) so they land in log.txt too, instead of its own handler.
+            client.run(config.DISCORD_TOKEN, log_handler=None)
             break
         except discord.errors.HTTPException as e:
             if e.status == 429 and attempt <= len(delays):
                 delay = delays[attempt - 1]
-                print(f"Rate limited (attempt {attempt}/{len(delays) + 1}), retrying in {delay}s...")
+                log.warning("Rate limited (attempt %s/%s), retrying in %ss...",
+                            attempt, len(delays) + 1, delay)
                 time.sleep(delay)
             else:
+                log.exception("fatal HTTP error, giving up")
                 raise
+        except Exception:
+            log.exception("bot crashed")
+            raise
