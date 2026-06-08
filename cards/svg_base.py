@@ -37,7 +37,7 @@ _FONT_PATHS = [
     if os.path.exists(os.path.join(_FONT_DIR, fname))
 ]
 
-_CELL_FILL = 'fill="#1c1410" fill-opacity="0.65"'
+_CELL_FILL = 'fill="#4b4b4b" fill-opacity="1.0"'
 _GOLD_EDGE = '#a9743f'
 _CELL_STROKE_W = 4
 _CELL_STROKE_OPACITY = 1.
@@ -173,7 +173,7 @@ def _save(svg: str, out_path: str, scale: float = 1):
         ))
         img = Image.open(io.BytesIO(png)).convert("RGBA")
         webp_path = os.path.splitext(out_path)[0] + ".webp"
-        img.save(webp_path, "WEBP", quality=78, method=1)
+        img.save(webp_path, "WEBP", quality=80, method=1)
         return webp_path
     except Exception:
         pass

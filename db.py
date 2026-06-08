@@ -3,8 +3,48 @@
 import sqlite3
 from contextlib import contextmanager
 
-from config import DB_PATH, ELO_START, FACTIONS, CLASSES
+from config import DB_PATH, ELO_START, FACTIONS, CLASSES, VERSION, STAT_PRIOR
 import elo
+
+VERSION_STR = ".".join(str(p) for p in VERSION)
+
+
+def _vtuple(s):
+    """Parse a 'a.b.c' version string into a tuple for ordering. Unknown -> (0,)."""
+    try:
+        return tuple(int(x) for x in str(s).split("."))
+    except (ValueError, AttributeError):
+        return (0,)
+
+
+def _bucketed(rows):
+    """rows of (key, version, count) -> {key: {version_tuple: count}}."""
+    out = {}
+    for key, ver, cnt in rows:
+        out.setdefault(key, {})[_vtuple(ver)] = cnt
+    return out
+
+
+def _weighted(key, wins, losses):
+    """Fold a bucket's per-version record into one (winrate%, total_wins, total_losses).
+
+    Recurrence over patches in ascending order, skipping patches with no games:
+        EffWr(p) = (G(p)*RawWr(p) + STAT_PRIOR*EffWr(p-1)) / (G(p) + STAT_PRIOR)
+    The earliest patch with games seeds EffWr with its raw winrate (no prior).
+    Reported games are the real total across all patches.
+    """
+    w_by, l_by = wins.get(key, {}), losses.get(key, {})
+    eff = None
+    for v in sorted(set(w_by) | set(l_by)):
+        w, l = w_by.get(v, 0), l_by.get(v, 0)
+        g = w + l
+        if g == 0:
+            continue
+        raw = w / g
+        eff = raw if eff is None else (g * raw + STAT_PRIOR * eff) / (g + STAT_PRIOR)
+    tw, tl = sum(w_by.values()), sum(l_by.values())
+    winrate = round(100 * eff) if eff is not None else 0
+    return winrate, tw, tl
 
 
 @contextmanager
@@ -51,11 +91,21 @@ def init_db():
                 loser_class     INTEGER,
                 loser_ultimate  TEXT,
                 delta           INTEGER NOT NULL DEFAULT 0,
-                played_at       TEXT NOT NULL DEFAULT (datetime('now'))
+                played_at       TEXT NOT NULL DEFAULT (datetime('now')),
+                version         TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_matches_winner ON matches(winner_id);
             CREATE INDEX IF NOT EXISTS idx_matches_loser  ON matches(loser_id);
         """)
+        # Migrate older DBs that predate the `version` column.
+        cols = {r["name"] for r in con.execute("PRAGMA table_info(matches)")}
+        if "version" not in cols:
+            con.execute("ALTER TABLE matches ADD COLUMN version TEXT")
+        # Backfill any unstamped matches as the current patch (chosen baseline:
+        # all existing history counts as the current version).
+        con.execute(
+            "UPDATE matches SET version=? WHERE version IS NULL", (VERSION_STR,)
+        )
 
 
 def _ensure_player(con, user_id: str):
@@ -86,9 +136,9 @@ def record_match(winner_id, loser_id, w_faction, w_class, w_ult, l_faction, l_cl
                (winner_id, loser_id,
                 winner_faction, winner_class, winner_ultimate,
                 loser_faction,  loser_class,  loser_ultimate,
-                delta)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (w_id, l_id, w_faction, _class_id(w_class), w_ult, l_faction, _class_id(l_class), l_ult, delta),
+                delta, version)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (w_id, l_id, w_faction, _class_id(w_class), w_ult, l_faction, _class_id(l_class), l_ult, delta, VERSION_STR),
         )
     return {"winner_elo": new_w, "loser_elo": new_l, "delta": delta}
 
@@ -120,20 +170,19 @@ def top_players(limit: int = 10):
 def faction_stats():
     """Global per-faction record, mirrors excluded, sorted by winrate then games (desc)."""
     with _conn() as con:
-        wins = dict(con.execute(
-            "SELECT winner_faction, COUNT(*) FROM matches "
-            "WHERE winner_faction != loser_faction GROUP BY winner_faction"
-        ).fetchall())
-        losses = dict(con.execute(
-            "SELECT loser_faction, COUNT(*) FROM matches "
-            "WHERE winner_faction != loser_faction GROUP BY loser_faction"
-        ).fetchall())
+        wins = _bucketed(con.execute(
+            "SELECT winner_faction, version, COUNT(*) FROM matches "
+            "WHERE winner_faction != loser_faction GROUP BY winner_faction, version"
+        ))
+        losses = _bucketed(con.execute(
+            "SELECT loser_faction, version, COUNT(*) FROM matches "
+            "WHERE winner_faction != loser_faction GROUP BY loser_faction, version"
+        ))
     out = []
     for f in FACTIONS:
-        w, l = wins.get(f, 0), losses.get(f, 0)
-        g = w + l
-        out.append({"faction": f, "wins": w, "losses": l, "games": g,
-                    "winrate": round(100 * w / g) if g else 0})
+        wr, w, l = _weighted(f, wins, losses)
+        out.append({"faction": f, "wins": w, "losses": l, "games": w + l,
+                    "winrate": wr})
     out.sort(key=lambda r: (r["winrate"], r["games"]), reverse=True)
     return out
 
@@ -142,20 +191,19 @@ def ultimate_stats():
     """Global per-ultimate record, mirrors excluded, sorted by popularity (games desc)."""
     from config import ULTIMATES
     with _conn() as con:
-        wins = dict(con.execute(
-            "SELECT winner_ultimate, COUNT(*) FROM matches "
-            "WHERE winner_ultimate != loser_ultimate GROUP BY winner_ultimate"
-        ).fetchall())
-        losses = dict(con.execute(
-            "SELECT loser_ultimate, COUNT(*) FROM matches "
-            "WHERE winner_ultimate != loser_ultimate GROUP BY loser_ultimate"
-        ).fetchall())
+        wins = _bucketed(con.execute(
+            "SELECT winner_ultimate, version, COUNT(*) FROM matches "
+            "WHERE winner_ultimate != loser_ultimate GROUP BY winner_ultimate, version"
+        ))
+        losses = _bucketed(con.execute(
+            "SELECT loser_ultimate, version, COUNT(*) FROM matches "
+            "WHERE winner_ultimate != loser_ultimate GROUP BY loser_ultimate, version"
+        ))
     out = []
     for u in ULTIMATES:
-        w, l = wins.get(u, 0), losses.get(u, 0)
-        g = w + l
-        out.append({"ultimate": u, "wins": w, "losses": l, "games": g,
-                    "winrate": round(100 * w / g) if g else 0})
+        wr, w, l = _weighted(u, wins, losses)
+        out.append({"ultimate": u, "wins": w, "losses": l, "games": w + l,
+                    "winrate": wr})
     out.sort(key=lambda r: r["games"], reverse=True)
     return out
 
@@ -163,53 +211,49 @@ def ultimate_stats():
 def frax_by_faction():
     """Frax Essence winrate broken down by faction, mirrors excluded, in FACTIONS order."""
     with _conn() as con:
-        wins = dict(con.execute(
-            "SELECT winner_faction, COUNT(*) FROM matches "
+        wins = _bucketed(con.execute(
+            "SELECT winner_faction, version, COUNT(*) FROM matches "
             "WHERE winner_ultimate='Frax Essence' AND loser_ultimate != 'Frax Essence' "
-            "GROUP BY winner_faction"
-        ).fetchall())
-        losses = dict(con.execute(
-            "SELECT loser_faction, COUNT(*) FROM matches "
+            "GROUP BY winner_faction, version"
+        ))
+        losses = _bucketed(con.execute(
+            "SELECT loser_faction, version, COUNT(*) FROM matches "
             "WHERE loser_ultimate='Frax Essence' AND winner_ultimate != 'Frax Essence' "
-            "GROUP BY loser_faction"
-        ).fetchall())
+            "GROUP BY loser_faction, version"
+        ))
     out = []
     for f in FACTIONS:
-        w, l = wins.get(f, 0), losses.get(f, 0)
-        g = w + l
-        out.append({"faction": f, "wins": w, "losses": l, "games": g,
-                    "winrate": round(100 * w / g) if g else 0})
+        wr, w, l = _weighted(f, wins, losses)
+        out.append({"faction": f, "wins": w, "losses": l, "games": w + l,
+                    "winrate": wr})
     return out
 
 
 def faction_class_stats():
     """WR for each (faction, class) pair, mirrors excluded. Returns {faction: [cls0, cls1, cls2]}."""
     with _conn() as con:
-        wins = {}
-        for f, ci, cnt in con.execute(
-            "SELECT winner_faction, winner_class, COUNT(*) FROM matches "
-            "WHERE winner_faction IS NOT NULL AND winner_class IS NOT NULL "
-            "AND NOT (winner_faction = loser_faction AND winner_class = loser_class) "
-            "GROUP BY winner_faction, winner_class"
-        ):
-            wins[(f, ci)] = cnt
-        losses = {}
-        for f, ci, cnt in con.execute(
-            "SELECT loser_faction, loser_class, COUNT(*) FROM matches "
-            "WHERE loser_faction IS NOT NULL AND loser_class IS NOT NULL "
-            "AND NOT (winner_faction = loser_faction AND winner_class = loser_class) "
-            "GROUP BY loser_faction, loser_class"
-        ):
-            losses[(f, ci)] = cnt
+        wins = _bucketed(
+            ((f, ci), ver, cnt) for f, ci, ver, cnt in con.execute(
+                "SELECT winner_faction, winner_class, version, COUNT(*) FROM matches "
+                "WHERE winner_faction IS NOT NULL AND winner_class IS NOT NULL "
+                "AND NOT (winner_faction = loser_faction AND winner_class = loser_class) "
+                "GROUP BY winner_faction, winner_class, version"
+            )
+        )
+        losses = _bucketed(
+            ((f, ci), ver, cnt) for f, ci, ver, cnt in con.execute(
+                "SELECT loser_faction, loser_class, version, COUNT(*) FROM matches "
+                "WHERE loser_faction IS NOT NULL AND loser_class IS NOT NULL "
+                "AND NOT (winner_faction = loser_faction AND winner_class = loser_class) "
+                "GROUP BY loser_faction, loser_class, version"
+            )
+        )
     out = {}
     for f in FACTIONS:
         row = []
         for i, _ in enumerate(CLASSES):
-            w = wins.get((f, i), 0)
-            l = losses.get((f, i), 0)
-            g = w + l
-            row.append({"wins": w, "losses": l, "games": g,
-                        "winrate": round(100 * w / g) if g else 0})
+            wr, w, l = _weighted((f, i), wins, losses)
+            row.append({"wins": w, "losses": l, "games": w + l, "winrate": wr})
         out[f] = row
     return out
 
@@ -217,18 +261,17 @@ def faction_class_stats():
 def class_stats():
     """Global per-class record, mirrors excluded (Warrior/Warmage/Warlock), original order."""
     with _conn() as con:
-        wins = dict(con.execute(
-            "SELECT winner_class, COUNT(*) FROM matches "
-            "WHERE winner_class != loser_class GROUP BY winner_class"
-        ).fetchall())
-        losses = dict(con.execute(
-            "SELECT loser_class, COUNT(*) FROM matches "
-            "WHERE winner_class != loser_class GROUP BY loser_class"
-        ).fetchall())
+        wins = _bucketed(con.execute(
+            "SELECT winner_class, version, COUNT(*) FROM matches "
+            "WHERE winner_class != loser_class GROUP BY winner_class, version"
+        ))
+        losses = _bucketed(con.execute(
+            "SELECT loser_class, version, COUNT(*) FROM matches "
+            "WHERE winner_class != loser_class GROUP BY loser_class, version"
+        ))
     out = []
     for i, c in enumerate(CLASSES):
-        w, l = wins.get(i, 0), losses.get(i, 0)
-        g = w + l
-        out.append({"class": c, "wins": w, "losses": l, "games": g,
-                    "winrate": round(100 * w / g) if g else 0})
+        wr, w, l = _weighted(i, wins, losses)
+        out.append({"class": c, "wins": w, "losses": l, "games": w + l,
+                    "winrate": wr})
     return out

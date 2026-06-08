@@ -35,6 +35,14 @@ REPORTS_CHANNEL_ID = int(os.environ.get("REPORTS_CHANNEL_ID", "0"))
 # Channel where the daily winrate stats cards are posted.
 WINRATE_CHANNEL_ID = int(os.environ.get("WINRATE_CHANNEL_ID", "0"))
 
+# --- Game version ----------------------------------------------------------
+# Patch the games are currently played on. Stamped onto every recorded match.
+# Bump this when a new balance patch ships. Stats fold older patches into the
+# current one via a fixed-size prior (see STAT_PRIOR): each patch's effective
+# winrate becomes a STAT_PRIOR-game prior for the next patch.
+VERSION = (4, 4, 8)
+STAT_PRIOR = 10  # virtual games the previous patch contributes to the next one
+
 # --- ELO -------------------------------------------------------------------
 ELO_START = 1000
 ELO_K = 60  # even match = ±30 pts
@@ -125,7 +133,7 @@ FACTION_COLORS = {
     "Haven":      "#d9b44a",
     "Sylvan":     "#4caf50",
     "Academy":    "#2196f3",
-    "Dungeon":    "#7b1fa2",
+    "Dungeon":    "#ac3bdd",
     "Necropolis": "#607d8b",
     "Inferno":    "#e53935",
     "Fortress":   "#94FFFA",
