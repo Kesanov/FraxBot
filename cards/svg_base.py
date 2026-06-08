@@ -37,19 +37,49 @@ _FONT_PATHS = [
     if os.path.exists(os.path.join(_FONT_DIR, fname))
 ]
 
-_CELL_FILL = 'fill="#3f3a34" fill-opacity="1.0"'
+_CELL_FILL = 'fill="#45413d" fill-opacity="1.0"'
 _GOLD_EDGE = '#a9743f'
 _CELL_STROKE_W = 4
 _CELL_STROKE_OPACITY = 1.
 
 
-def _cell_border(color=_GOLD_EDGE, width=_CELL_STROKE_W):
-    """Shared fill + stroke chrome for every rendered cell (headers, leaderboard
-    rows, stat cells, result rows). `color` and `width` may be overridden for
-    semantic cells (factions, winner/loser), but the stroke opacity is always
-    shared so all cards match. Returns the SVG attribute string for a <rect>."""
-    return (f'{_CELL_FILL} stroke="{color}" '
-            f'stroke-opacity="{_CELL_STROKE_OPACITY}" stroke-width="{width}"')
+# Shared <defs> injected once per document by _save(): a vertical metallic
+# gradient for the gold frame (bright top edge -> dark bronze bottom, reads as a
+# lit bevel) and a soft drop shadow that lifts cells off the parchment.
+_DEFS = (
+    '<defs>'
+    '<linearGradient id="goldEdge" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#f0d18a"/>'
+    '<stop offset="0.5" stop-color="#a9743f"/>'
+    '<stop offset="1" stop-color="#6e4523"/>'
+    '</linearGradient>'
+    '<filter id="cellShadow" x="-20%" y="-20%" width="140%" height="140%">'
+    '<feDropShadow dx="0" dy="3" stdDeviation="3" '
+    'flood-color="#000000" flood-opacity="0.45"/>'
+    '</filter>'
+    '</defs>'
+)
+
+# Light tint for the inner bevel highlight line.
+_BEVEL_HILITE = "#f6e4b0"
+
+
+def _cell(x, y, w, h, rx, color=_GOLD_EDGE, width=_CELL_STROKE_W):
+    """Full cell chrome as one or more <rect> elements: a soft drop shadow, a
+    metallic gradient stroke for the gold frame (semantic colors stay solid),
+    and a thin inner highlight inset from the edge that gives the border a
+    beveled, polished-metal look. Gradient + shadow live in the shared _DEFS."""
+    stroke = "url(#goldEdge)" if color == _GOLD_EDGE else color
+    inset = max(width / 2 + 1, 2)
+    ir = max(rx - inset, 0)
+    return (
+        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}" '
+        f'{_CELL_FILL} stroke="{stroke}" stroke-opacity="{_CELL_STROKE_OPACITY}" '
+        f'stroke-width="{width}" filter="url(#cellShadow)"/>'
+        f'<rect x="{x + inset}" y="{y + inset}" width="{w - 2 * inset}" '
+        f'height="{h - 2 * inset}" rx="{ir}" fill="none" '
+        f'stroke="{_BEVEL_HILITE}" stroke-opacity="0.35" stroke-width="1"/>'
+    )
 
 _OUTER_PAD      = 20   # horizontal inset for header bars and chunk vertical pad
 _HDR_VPAD       = 16   # vertical inset for header bars
@@ -160,11 +190,31 @@ def render_text(x, y, text, size, fill, weight="700", anchor="start",
     return "".join(parts)
 
 
+def render_engraved(x, y, text, size, fill, weight="700", anchor="middle",
+                    italic=False, shadow="#000000", highlight="#ffe9a8"):
+    """Title text that looks carved into the surface (3D inward / inset). Assumes
+    a light source from the top: a dark edge peeks above each glyph and a light
+    edge below it. Layers, back to front: dark copy nudged up, light copy nudged
+    down, then the real fill on top. Offset scales with font size."""
+    d = max(1, round(size / 28))
+    return (
+        render_text(x, y - d, text, size, shadow, weight, anchor, italic,
+                    extra=' opacity="0.6"')
+        + render_text(x, y + d, text, size, highlight, weight, anchor, italic,
+                      extra=' opacity="0.28"')
+        + render_text(x, y, text, size, fill, weight, anchor, italic)
+    )
+
+
 def _lux_bg():
     return ""
 
 
 def _save(svg: str, out_path: str, scale: float = 1):
+    # Inject the shared gradient/shadow defs right after the opening <svg ...> tag
+    # (the first '>' reliably closes it — no '>' appears in the attribute values).
+    if "url(#goldEdge)" in svg or "url(#cellShadow)" in svg:
+        svg = svg.replace(">", ">" + _DEFS, 1)
     try:
         png = bytes(resvg_py.svg_to_bytes(
             svg_string=svg, zoom=scale,

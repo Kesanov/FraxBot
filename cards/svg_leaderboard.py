@@ -5,8 +5,8 @@ import asyncio
 from config import FACTION_COLORS, faction_base, faction_emoji
 from cards.model import _latinize, default_avatar
 from cards.svg_base import (
-    W, _esc, _lux_bg, _save, _FONT_FAMILY, render_text,
-    _cell_border, _GOLD_EDGE, _CELL_STROKE_W, RANK_COLORS,
+    W, _esc, _lux_bg, _save, _FONT_FAMILY, render_text, render_engraved,
+    _cell, _GOLD_EDGE, _CELL_STROKE_W, RANK_COLORS,
     _OUTER_PAD, _HDR_VPAD, _CELL_OUTER_PAD,
 )
 
@@ -18,10 +18,9 @@ def render_header(out_path, title="Frax Arena Top12", scale=1):
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
         f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">'
         + _lux_bg()
-        + f'<rect x="{_OUTER_PAD}" y="{_HDR_VPAD}" width="{W-2*_OUTER_PAD}" height="{h-2*_HDR_VPAD}" rx="22" '
-          f'{_cell_border(width=_CELL_STROKE_W*2)}/>'
+        + _cell(_OUTER_PAD, _HDR_VPAD, W-2*_OUTER_PAD, h-2*_HDR_VPAD, 22, width=_CELL_STROKE_W*2)
         + render_text(int(W*0.2), h//2+18, "🏆", 54, "#ffd54f", anchor="middle")
-        + render_text(W//2, h//2+13, title, 54, "#ffd54f", anchor="middle")
+        + render_engraved(W//2, h//2+13, title, 54, "#ffd54f")
         + render_text(int(W*0.8), h//2+18, "🏆", 54, "#ffd54f", anchor="middle")
         + '</svg>'
     )
@@ -48,8 +47,7 @@ def render_rows(entries, out_path, scale=1):
         pos = e["position"]
         pc = pos_color.get(pos, "#8a80b0")
         parts.append(
-            f'<rect x="{_CELL_OUTER_PAD}" y="{y+6}" width="{W-2*_CELL_OUTER_PAD}" height="{row_h-12}" rx="16" '
-            f'{_cell_border()}/>'
+            _cell(_CELL_OUTER_PAD, y+6, W-2*_CELL_OUTER_PAD, row_h-12, 16)
         )
         parts.append(render_text(72, cy+12, f"#{pos}", 36, pc, anchor="middle"))
         cid = f"clip_{pos}"
@@ -110,8 +108,7 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=1):
         cy = y + row_h // 2
         col = FACTION_COLORS.get(r["faction"], "#90a4ae")
         parts.append(
-            f'<rect x="{_CELL_OUTER_PAD}" y="{y+5}" width="{W-2*_CELL_OUTER_PAD}" height="{row_h-10}" rx="14" '
-            f'{_cell_border(color=col)}/>'
+            _cell(_CELL_OUTER_PAD, y+5, W-2*_CELL_OUTER_PAD, row_h-10, 14, color=col)
             + render_text(45, cy+9, r["faction"], 26, col)
         )
         has = r["games"] > 0
@@ -156,9 +153,8 @@ def render_result(winner, loser, delta, out_path,
         info = f'{faction_base(p["faction"])}  ·  {p["ultimate"]}'
         delta_txt = f'{"+" if elo_delta>=0 else ""}{elo_delta}'
         return (
-            f'<rect x="20" y="{y}" width="{width-40}" height="{row_h-12}" rx="18" '
-            f'{_cell_border(color=border_col)}/>'
-            f'<clipPath id="{cid}"><circle cx="{acx}" cy="{cy}" r="{ar}"/></clipPath>'
+            _cell(20, y, width-40, row_h-12, 18, color=border_col)
+            + f'<clipPath id="{cid}"><circle cx="{acx}" cy="{cy}" r="{ar}"/></clipPath>'
             f'<circle cx="{acx}" cy="{cy}" r="{ar+3}" fill="none" stroke="{border_col}" stroke-width="3"/>'
             f'<image x="{acx-ar}" y="{cy-ar}" width="{ar*2}" height="{ar*2}" '
             f'href="{_esc(avatar)}" clip-path="url(#{cid})"/>'

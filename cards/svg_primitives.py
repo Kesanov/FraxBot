@@ -1,9 +1,9 @@
 """Layout constants and low-level SVG drawing helpers for stats cards."""
 
 from cards.svg_base import (
-    W, _esc, _GOLD_EDGE, render_text,
+    W, _esc, _GOLD_EDGE, render_text, render_engraved,
     _ULTIMATES_DIR, _TOWNS_DIR, _local_data_uri,
-    _cell_border, _CELL_STROKE_W,
+    _cell, _CELL_STROKE_W,
     _OUTER_PAD, _CELL_OUTER_PAD,
 )
 from config import FACTION_COLORS
@@ -75,16 +75,14 @@ def _d_section_header(parts, y, title):
     ih  = _S_HDR_H - 2 * pad
     ty  = y + pad + ih // 2 + 22
     parts.append(
-        f'<rect x="{_S_INSET}" y="{y + pad}" width="{W - 2*_S_INSET}" height="{ih}" rx="16" '
-        f'{_cell_border(width=_CELL_STROKE_W * 2)}/>'
-        + render_text(W//2, ty, title, 60, "#ffd54f", anchor="middle")
+        _cell(_S_INSET, y + pad, W - 2*_S_INSET, ih, 16, width=_CELL_STROKE_W * 2)
+        + render_engraved(W//2, ty, title, 60, "#ffd54f")
     )
 
 
 def _d_section_bg(parts, y, h):
     parts.append(
-        f'<rect x="{_S_INSET}" y="{y}" width="{_S_W_INNER}" height="{h}" rx="18" '
-        f'{_cell_border()}/>'
+        _cell(_S_INSET, y, _S_W_INNER, h, 18)
     )
 
 

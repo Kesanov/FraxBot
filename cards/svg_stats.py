@@ -3,9 +3,9 @@
 import asyncio
 
 from cards.svg_base import (
-    W, _save, _FONT_FAMILY, render_text, _local_data_uri,
+    W, _save, _FONT_FAMILY, render_text, render_engraved, _local_data_uri,
     _ULTIMATES_DIR, _TOWNS_DIR,
-    _cell_border, _CELL_STROKE_W,
+    _cell, _CELL_STROKE_W,
     _OUTER_PAD, _HDR_VPAD,
 )
 from cards.svg_primitives import (
@@ -26,9 +26,8 @@ def render_stats_header_img(title, out_path, scale=1):
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
         f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">',
-        f'<rect x="{_OUTER_PAD}" y="{outer}" width="{W - 2*_OUTER_PAD}" height="{ih}" rx="16" '
-        f'{_cell_border(width=_CELL_STROKE_W * 2)}/>'
-        + render_text(W//2, ty, title, 60, "#ffd54f", anchor="middle"),
+        _cell(_OUTER_PAD, outer, W - 2*_OUTER_PAD, ih, 16, width=_CELL_STROKE_W * 2)
+        + render_engraved(W//2, ty, title, 60, "#ffd54f"),
     ]
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
