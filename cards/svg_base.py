@@ -37,7 +37,7 @@ _FONT_PATHS = [
     if os.path.exists(os.path.join(_FONT_DIR, fname))
 ]
 
-_CELL_FILL = 'fill="#4b4b4b" fill-opacity="1.0"'
+_CELL_FILL = 'fill="#3f3a34" fill-opacity="1.0"'
 _GOLD_EDGE = '#a9743f'
 _CELL_STROKE_W = 4
 _CELL_STROKE_OPACITY = 1.
