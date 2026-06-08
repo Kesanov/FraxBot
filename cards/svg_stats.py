@@ -22,12 +22,12 @@ def render_stats_header_img(title, out_path, scale=1):
     h     = ih + 2 * outer
     ow    = 800
     oh    = h * ow // W
-    ty    = outer + ih // 2 + 22
+    cy    = outer + ih // 2
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
         f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">',
         _cell(_OUTER_PAD, outer, W - 2*_OUTER_PAD, ih, 16, width=_CELL_STROKE_W * 2)
-        + render_engraved(W//2, ty, title, 60, "#ffd54f"),
+        + render_engraved(W//2, cy, title, 60, "#ffd54f", small_caps=True),
     ]
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
@@ -154,7 +154,7 @@ def render_stats_card(ult_rows, faction_rows, class_rows, frax_rows, fc_data,
 
     y = _S_GAP
 
-    _d_section_header(parts, y, "Ultimate Winrate")
+    _d_section_header(parts, y, "Ultimate winrate")
     y += _S_HDR_H
     _d_section_bg(parts, y, ult_sec_h)
     ult_r1 = main_ult[:_S_COLS_U]
@@ -168,13 +168,13 @@ def render_stats_card(ult_rows, faction_rows, class_rows, frax_rows, fc_data,
     _d_frax_row(parts, y, frax_rows, frax_icon, town_imgs)
     y += _S_UCH + _S_GAP
 
-    _d_section_header(parts, y, "Faction Winrate")
+    _d_section_header(parts, y, "Faction winrate")
     y += _S_HDR_H
     _d_section_bg(parts, y, _S_FC_H)
     _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs)
     y += _S_FC_H + _S_GAP
 
-    _d_section_header(parts, y, "Class Winrate")
+    _d_section_header(parts, y, "Class winrate")
     y += _S_HDR_H
     _d_section_bg(parts, y, _S_CCH)
     for i, r in enumerate(class_rows):

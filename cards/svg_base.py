@@ -37,7 +37,7 @@ _FONT_PATHS = [
     if os.path.exists(os.path.join(_FONT_DIR, fname))
 ]
 
-_CELL_FILL = 'fill="#3d3d3d" fill-opacity="1.0"'
+_CELL_FILL = 'fill="#3d3d3d" fill-opacity="0.7"'
 _GOLD_EDGE = '#a9743f'
 _CELL_STROKE_W = 4
 _CELL_STROKE_OPACITY = 1.
@@ -157,6 +157,65 @@ def _font_runs(text):
     return [(bool(i % 2), s) for i, s in enumerate(_EMOJI_RE.split(text)) if s]
 
 
+_SMALL_CAPS_RATIO = 0.75
+_CAP_RATIO = 0.70  # cap height / em for Crimson Pro
+
+
+def _case_runs(text):
+    """Split into (is_large, substring) runs for small-caps.
+    Spaces and punctuation are always their own runs so they never appear at
+    the start of a <text> element (SVG collapses leading whitespace)."""
+    if not text:
+        return []
+    runs = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if not ch.isalpha():
+            j = i + 1
+            while j < len(text) and not text[j].isalpha():
+                j += 1
+            runs.append((True, text[i:j]))
+            i = j
+        else:
+            large = ch.isupper()
+            j = i + 1
+            while j < len(text) and text[j].isalpha() and text[j].isupper() == large:
+                j += 1
+            runs.append((large, text[i:j]))
+            i = j
+    return runs
+
+
+def render_small_caps(x, y, text, size, fill, weight="700", anchor="middle", extra=""):
+    """Render text in small-caps: originally uppercase at full size, originally
+    lowercase rendered uppercase at _SMALL_CAPS_RATIO * size. y is the visual
+    vertical center; each run's baseline is shifted so cap heights are all
+    optically centered at y."""
+    case_runs = _case_runs(str(text))
+    if not case_runs:
+        return ""
+    small = round(size * _SMALL_CAPS_RATIO)
+    # baseline = cap_center + half_cap_height; cap_center == y for both sizes
+    y_large = y + round(size  * _CAP_RATIO / 2)
+    y_small = y + round(small * _CAP_RATIO / 2)
+    runs_out = [(is_large, seg if is_large else seg.upper(),
+                 size if is_large else small,
+                 y_large if is_large else y_small)
+                for is_large, seg in case_runs]
+    widths = [_run_width(False, seg, sz, weight, False) for _, seg, sz, _ in runs_out]
+    total = sum(widths)
+    cur = x - total / 2 if anchor == "middle" else x - total if anchor == "end" else x
+    parts = []
+    for (_, seg, sz, ty), w in zip(runs_out, widths):
+        fw = f' font-weight="{weight}"'
+        parts.append(f'<text x="{cur:.1f}" y="{ty}" font-size="{sz}" '
+                     f'font-family="{_FONT_FAMILY}"{fw} fill="{fill}"{extra}'
+                     f'>{_esc(seg)}</text>')
+        cur += w
+    return "".join(parts)
+
+
 def render_text(x, y, text, size, fill, weight="700", anchor="start",
                 italic=False, extra=""):
     """One or more <text> elements rendering `text` with emoji runs in the emoji
@@ -191,18 +250,27 @@ def render_text(x, y, text, size, fill, weight="700", anchor="start",
 
 
 def render_engraved(x, y, text, size, fill, weight="700", anchor="middle",
-                    italic=False, shadow="#000000", highlight="#ffe9a8"):
+                    italic=False, shadow="#000000", highlight="#ffe9a8", extra="",
+                    small_caps=False):
     """Title text that looks carved into the surface (3D inward / inset). Assumes
     a light source from the top: a dark edge peeks above each glyph and a light
     edge below it. Layers, back to front: dark copy nudged up, light copy nudged
     down, then the real fill on top. Offset scales with font size."""
     d = max(1, round(size / 28))
+    if small_caps:
+        return (
+            render_small_caps(x, y - d, text, size, shadow, weight, anchor,
+                              extra=f' opacity="0.6"{extra}')
+            + render_small_caps(x, y + d, text, size, highlight, weight, anchor,
+                                extra=f' opacity="0.28"{extra}')
+            + render_small_caps(x, y, text, size, fill, weight, anchor, extra=extra)
+        )
     return (
         render_text(x, y - d, text, size, shadow, weight, anchor, italic,
-                    extra=' opacity="0.6"')
+                    extra=f' opacity="0.6"{extra}')
         + render_text(x, y + d, text, size, highlight, weight, anchor, italic,
-                      extra=' opacity="0.28"')
-        + render_text(x, y, text, size, fill, weight, anchor, italic)
+                      extra=f' opacity="0.28"{extra}')
+        + render_text(x, y, text, size, fill, weight, anchor, italic, extra=extra)
     )
 
 

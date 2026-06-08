@@ -73,10 +73,10 @@ def _d_stats(parts, cx, y_games, games, winrate, has, fg=13, fw=17):
 def _d_section_header(parts, y, title):
     pad = 8
     ih  = _S_HDR_H - 2 * pad
-    ty  = y + pad + ih // 2 + 22
+    cy  = y + pad + ih // 2
     parts.append(
         _cell(_S_INSET, y + pad, W - 2*_S_INSET, ih, 16, width=_CELL_STROKE_W * 2)
-        + render_engraved(W//2, ty, title, 60, "#ffd54f")
+        + render_engraved(W//2, cy, title, 60, "#ffd54f", small_caps=True)
     )
 
 

@@ -147,11 +147,11 @@ def render_stats(use_mock):
         frax_rows, fc_rows = MOCK_FRAX, MOCK_FC_DATA
 
     renders = [
-        ("h1_ult", lambda: renderer.render_stats_header_img("Ultimate Winrate", _out("preview_h1_ult.webp"))),
+        ("h1_ult", lambda: renderer.render_stats_header_img("Ultimate winrate", _out("preview_h1_ult.webp"))),
         ("s1_ult", lambda: renderer.render_ult_section_img(ult_rows, frax_rows, _out("preview_s1_ult.webp"))),
-        ("h2_fac", lambda: renderer.render_stats_header_img("Faction Winrate", _out("preview_h2_fac.webp"))),
+        ("h2_fac", lambda: renderer.render_stats_header_img("Faction winrate", _out("preview_h2_fac.webp"))),
         ("s2_fac", lambda: renderer.render_faction_section_img(fac_rows, fc_rows, _out("preview_s2_fac.webp"))),
-        ("h3_cls", lambda: renderer.render_stats_header_img("Class Winrate", _out("preview_h3_cls.webp"))),
+        ("h3_cls", lambda: renderer.render_stats_header_img("Class winrate", _out("preview_h3_cls.webp"))),
         ("s3_cls", lambda: renderer.render_class_section_img(cls_rows, _out("preview_s3_cls.webp"))),
     ]
     for name, fn in renders:

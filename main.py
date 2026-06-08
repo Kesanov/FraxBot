@@ -567,15 +567,15 @@ async def publish_winrate_stats():
         d    = config.CACHE_DIR
         loop = asyncio.get_event_loop()
 
-        h1 = await _render_stats_header("Ultimate Winrate")
+        h1 = await _render_stats_header("Ultimate winrate")
         s1 = await loop.run_in_executor(None, renderer.render_ult_section_img,
                                         ult_rows, frax_rows, os.path.join(d, "stats_s1.webp"))
         await asyncio.sleep(2)
-        h2 = await _render_stats_header("Faction Winrate")
+        h2 = await _render_stats_header("Faction winrate")
         s2 = await loop.run_in_executor(None, renderer.render_faction_section_img,
                                         fac_rows, fc_rows, os.path.join(d, "stats_s2.webp"))
         await asyncio.sleep(2)
-        h3 = await _render_stats_header("Class Winrate")
+        h3 = await _render_stats_header("Class winrate")
         s3 = await loop.run_in_executor(None, renderer.render_class_section_img,
                                         cls_rows, os.path.join(d, "stats_s3.webp"))
 

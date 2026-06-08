@@ -5,13 +5,13 @@ import asyncio
 from config import FACTION_COLORS, faction_base, faction_emoji
 from cards.model import _latinize, default_avatar
 from cards.svg_base import (
-    W, _esc, _lux_bg, _save, _FONT_FAMILY, render_text, render_engraved,
+    W, _esc, _lux_bg, _save, _FONT_FAMILY, render_text, render_engraved, render_small_caps,
     _cell, _GOLD_EDGE, _CELL_STROKE_W, RANK_COLORS,
     _OUTER_PAD, _HDR_VPAD, _CELL_OUTER_PAD,
 )
 
 
-def render_header(out_path, title="Frax Arena Top12", scale=1):
+def render_header(out_path, title="Frax arena Leaderboard", scale=1):
     h = 152
     out_w, out_h = 800, h * 800 // W
     svg = (
@@ -19,9 +19,9 @@ def render_header(out_path, title="Frax Arena Top12", scale=1):
         f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">'
         + _lux_bg()
         + _cell(_OUTER_PAD, _HDR_VPAD, W-2*_OUTER_PAD, h-2*_HDR_VPAD, 22, width=_CELL_STROKE_W*2)
-        + render_text(int(W*0.2), h//2+18, "🏆", 54, "#ffd54f", anchor="middle")
-        + render_engraved(W//2, h//2+13, title, 54, "#ffd54f")
-        + render_text(int(W*0.8), h//2+18, "🏆", 54, "#ffd54f", anchor="middle")
+        + render_text(int(W*0.2), h//2 + round(54 * 0.70 / 2), "🏆", 54, "#ffd54f", anchor="middle")
+        + render_engraved(W//2, h//2, title, 54, "#ffd54f", small_caps=True)
+        + render_text(int(W*0.8), h//2 + round(54 * 0.70 / 2), "🏆", 54, "#ffd54f", anchor="middle")
         + '</svg>'
     )
     return _save(svg, out_path, scale)
@@ -101,7 +101,7 @@ def render_faction_table(rows, out_path, title="Faction Winrate", scale=1):
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
         f'viewBox="0 0 {W} {height}" font-family="{_FONT_FAMILY}">',
         f'<rect width="{W}" height="{height}" fill="#14101f"/>',
-        render_text(40, 46, title, 34, "#ffd54f"),
+        render_small_caps(W//2, title_h // 2, title, 34, "#ffd54f"),
     ]
     for idx, r in enumerate(rows):
         y = title_h + idx * row_h
