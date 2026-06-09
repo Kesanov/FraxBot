@@ -7,7 +7,7 @@ from cards.model import _latinize, default_avatar
 from cards.svg_base import (
     W, _esc, _lux_bg, _save, _FONT_FAMILY, render_text, render_engraved, render_small_caps,
     _cell, _GOLD_EDGE, _CELL_STROKE_W, RANK_COLORS,
-    _OUTER_PAD, _HDR_VPAD, _CELL_OUTER_PAD,
+    _OUTER_PAD, _HDR_VPAD, _CELL_OUTER_PAD, _font_runs,
 )
 
 
@@ -61,15 +61,15 @@ def render_rows(entries, out_path, scale=1):
         )
         name_x = 215
         name_col = pc if pos in pos_color else "#f2eefc"
-        parts.append(
-            render_text(name_x, cy-2, e["name"][:21], 30, name_col)
-            + render_text(name_x, cy+26, e["rank"], 19,
-                          RANK_COLORS.get(e["rank"], "#9a90c0"))
-        )
         if pos in (1, 2, 3):
             medal = {1: "🥇", 2: "🥈", 3: "🥉"}[pos]
-            parts.append(render_text(186, cy+38, medal, 39, "#ffd54f",
+            parts.append(render_text(186, cy+38, medal, 31, "#ffd54f",
                                      anchor="middle"))
+        parts.append(
+            render_text(name_x, cy+3, e["name"][:21], 33, name_col)
+            + render_text(name_x, cy+26, e["rank"], 25,
+                          RANK_COLORS.get(e["rank"], "#9a90c0"))
+        )
         cols = [
             (str(e["elo"]), "ELO", "#80d8ff"),
             (f'{e["winrate"]}%', "WINRATE", "#f2eefc"),
@@ -79,13 +79,20 @@ def render_rows(entries, out_path, scale=1):
         cx = W - 510
         for val, lab, col in cols:
             parts.append(
-                render_text(cx, cy-2, val, 27, col, anchor="middle")
-                + render_text(cx, cy+24, lab, 18, "#9a90c0", anchor="middle")
+                render_text(cx, cy+3, val, 32, col, anchor="middle")
+                + render_text(cx, cy+26, lab, 22, "#9a90c0", anchor="middle")
             )
             cx += 100
         streak = e.get("streak", "–")
-        parts.append(render_text(cx, cy-2, streak, 27, "#ffab40", anchor="middle"))
-        parts.append(render_text(cx, cy+24, "STREAK", 18, "#9a90c0", anchor="middle"))
+        s_runs = _font_runs(str(streak))
+        emoji_part = "".join(seg for is_e, seg in s_runs if is_e)
+        text_part  = "".join(seg for is_e, seg in s_runs if not is_e)
+        if emoji_part:
+            parts.append(render_text(cx + 13, cy+3, emoji_part, 26, "#ffab40", anchor="middle"))
+            parts.append(render_text(cx - 14, cy+3, text_part, 32, "#ffab40", anchor="middle"))
+        else:
+            parts.append(render_text(cx, cy+3, streak, 32, "#ffab40", anchor="middle"))
+        parts.append(render_text(cx, cy+26, "STREAK", 22, "#9a90c0", anchor="middle"))
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
 

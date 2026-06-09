@@ -216,6 +216,26 @@ def render_small_caps(x, y, text, size, fill, weight="700", anchor="middle", ext
     return "".join(parts)
 
 
+def _darken(hex_col, factor=0.4):
+    h = hex_col.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"#{int(r*factor):02x}{int(g*factor):02x}{int(b*factor):02x}"
+
+
+def render_text_outlined(x, y, text, size, fill, stroke=None, sw=2, invert=False, **kw):
+    """render_text with a same-hue outline underneath the fill.
+    invert=True: dark fill with a light stroke (inverse style)."""
+    if invert:
+        dark = stroke if stroke is not None else _darken(fill)
+        light = fill
+        text_col, sc = dark, light
+    else:
+        sc = stroke if stroke is not None else _darken(fill)
+        text_col = fill
+    return (render_text(x, y, text, size, sc, extra=f' stroke="{sc}" stroke-width="{sw * 2}"', **kw)
+            + render_text(x, y, text, size, text_col, **kw))
+
+
 def render_text(x, y, text, size, fill, weight="700", anchor="start",
                 italic=False, extra=""):
     """One or more <text> elements rendering `text` with emoji runs in the emoji
