@@ -16,25 +16,28 @@ _S_HDR_H   = 112
 _S_GAP     = _OUTER_PAD
 _S_SUB_H   = 34
 _S_PAD     = 10
-_S_W_INNER = W - 2 * _S_INSET   # 1000
+_S_CELL_PAD = 20   # uniform padding inside section background cells (all sides)
+_S_W_INNER   = W - 2 * _S_INSET          # 1000 — width of section background
+_S_W_CONTENT = _S_W_INNER - 2 * _S_CELL_PAD  # 960 — content area inside padding
+_S_CONTENT_X = _S_INSET + _S_CELL_PAD    # 50  — left edge of content area
 
 _S_COLS_U  = 9
-_S_UCW     = _S_W_INNER // _S_COLS_U   # 111
-_S_UISZ    = _S_UCW - 2 * _S_PAD      # 91
+_S_UCW     = _S_W_CONTENT // _S_COLS_U   # 106
+_S_UISZ    = _S_UCW - 2 * _S_PAD        # 86
 _S_UCH     = 170
 
-_S_FC_LBL   = 70
-_S_FC_CW    = (_S_W_INNER - _S_FC_LBL) // 8   # 116
-_S_FC_HDR   = 148
-_S_FC_ISZT  = 66
-_S_FC_ROW   = 72
-_S_FC_RGAP  = 10
-_S_FC_H     = _S_FC_HDR + _S_FC_RGAP + 3 * _S_FC_ROW   # 338
+_S_FC_LBL   = 80                                  # row-label column width
+_S_FC_CW    = (_S_W_CONTENT - _S_FC_LBL) // 8   # faction column width (~110)
+_S_FC_COL_H = 80                                  # column-header row height (town images)
+_S_FC_ROW_H = 68                                  # data row height (3 classes + all)
+_S_FC_ISZT  = 56                                  # town image size in header
+_S_FC_LSZT  = 46                                  # class image size in row label
+_S_FC_H     = _S_CELL_PAD + _S_FC_COL_H + 4 * _S_FC_ROW_H + _S_CELL_PAD  # total
 
-_S_CCW     = _S_W_INNER // 3   # 333
-_S_CCH     = 146
+_S_CCW     = _S_W_CONTENT // 3   # 320
+_S_CCH     = 186   # base 146 + 2 * _S_CELL_PAD
 
-_S_FRAX_TOWN_ISZ = round(_S_UISZ * 0.7)   # 64
+_S_FRAX_TOWN_ISZ = round(_S_UISZ * 0.7)   # 60
 
 _S_CELL_BG = 'fill="#ffffff" fill-opacity="0.05"'
 
@@ -94,7 +97,7 @@ def _d_sub_header(parts, y, title):
 
 
 def _d_ult_cell(parts, col, row_idx, y, r, ult_imgs):
-    x  = _S_INSET + col * _S_UCW
+    x  = _S_CONTENT_X + col * _S_UCW
     cx = x + _S_UCW // 2
     ix = cx - _S_UISZ // 2
     _d_sq_img(parts, ult_imgs.get(r["ultimate"]), ix, y + _S_PAD, _S_UISZ, 12,
@@ -112,7 +115,7 @@ def _d_frax_row(parts, y, frax_rows, frax_icon, town_imgs):
     yg = y + _S_PAD + _S_UISZ + 12 + 17
 
     def _cell(col, img, isz, border_col, games, winrate):
-        x  = _S_INSET + col * _S_UCW
+        x  = _S_CONTENT_X + col * _S_UCW
         cx = x + _S_UCW // 2
         iy = y + _S_PAD + (_S_UISZ - isz) // 2
         ix = cx - isz // 2
@@ -127,75 +130,92 @@ def _d_frax_row(parts, y, frax_rows, frax_icon, town_imgs):
 
 
 def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
-    """Faction header (town + overall WR) fused with class × faction grid."""
+    """Table: rows = [Warrior, Warmage, Warlock, All], columns = 8 factions."""
     from config import FACTIONS, CLASSES
     fac_lookup = {r["faction"]: r for r in faction_rows}
 
-    for i, fac in enumerate(FACTIONS):
-        r     = fac_lookup.get(fac, {"games": 0, "winrate": 0})
-        x     = _S_INSET + _S_FC_LBL + i * _S_FC_CW
-        cx    = x + _S_FC_CW // 2
-        col_c = FACTION_COLORS.get(fac, "#90a4ae")
-        ix    = cx - _S_FC_ISZT // 2
-        _d_sq_img(parts, town_imgs.get(fac), ix, y + 15, _S_FC_ISZT, 8,
-                  col_c, f"fch{i}", sw=2, so=0.8)
-        yg = y + 15 + _S_FC_ISZT + 3 + 18
-        _d_stats(parts, cx, yg, r["games"], r["winrate"], r["games"] > 0, fg=18, fw=24)
+    content_y = y + _S_CELL_PAD
+    data_x    = _S_CONTENT_X + _S_FC_LBL
+    right_x   = W - _S_CONTENT_X
 
+    # --- column headers: faction town images ---
+    for i, fac in enumerate(FACTIONS):
+        cx  = data_x + i * _S_FC_CW + _S_FC_CW // 2
+        ix  = cx - _S_FC_ISZT // 2
+        iy  = content_y + (_S_FC_COL_H - _S_FC_ISZT) // 2
+        col_c = FACTION_COLORS.get(fac, "#90a4ae")
+        _d_sq_img(parts, town_imgs.get(fac), ix, iy, _S_FC_ISZT, 8,
+                  col_c, f"fch{i}", sw=2, so=0.8)
+
+    # separator below header
+    sep_y = content_y + _S_FC_COL_H
     parts.append(
-        f'<line x1="{_S_INSET}" y1="{y + _S_FC_HDR + _S_FC_RGAP}" '
-        f'x2="{W - _S_INSET}" y2="{y + _S_FC_HDR + _S_FC_RGAP}" '
-        f'stroke="{_GOLD_EDGE}" stroke-opacity="0.3" stroke-width="1"/>'
+        f'<line x1="{_S_CONTENT_X}" y1="{sep_y}" x2="{right_x}" y2="{sep_y}" '
+        f'stroke="{_GOLD_EDGE}" stroke-opacity="0.4" stroke-width="1"/>'
     )
 
-    for j, cls in enumerate(CLASSES):
-        ry  = y + _S_FC_HDR + _S_FC_RGAP + j * _S_FC_ROW
-        rcy = ry + _S_FC_ROW // 2
-        lsz = _S_FC_ROW - 10
-        _d_sq_img(parts, cls_imgs.get(cls),
-                  _S_INSET + (_S_FC_LBL - lsz) // 2, ry + 5,
-                  lsz, 8, _GOLD_EDGE, f"fcl{j}", sw=0)
-        parts.append(
-            f'<line x1="{_S_INSET}" y1="{ry}" x2="{W - _S_INSET}" y2="{ry}" '
-            f'stroke="{_GOLD_EDGE}" stroke-opacity="0.15" stroke-width="1"/>'
-        )
+    # --- data rows: 3 classes then "All" ---
+    rows = [(cls, False) for cls in CLASSES] + [("All", True)]
+    for j, (label, is_all) in enumerate(rows):
+        ry  = sep_y + j * _S_FC_ROW_H
+        rcy = ry + _S_FC_ROW_H // 2
+
+        # row separator (skip first, already have header sep)
+        if j > 0:
+            parts.append(
+                f'<line x1="{_S_CONTENT_X}" y1="{ry}" x2="{right_x}" y2="{ry}" '
+                f'stroke="{_GOLD_EDGE}" stroke-opacity="0.15" stroke-width="1"/>'
+            )
+
+        # row label: class image + name (or "All" text)
+        lx = _S_CONTENT_X + (_S_FC_LBL - _S_FC_LSZT) // 2
+        if is_all:
+            parts.append(render_text(
+                _S_CONTENT_X + _S_FC_LBL // 2, rcy + 8,
+                "All", 22, "#c9a7ff", anchor="middle"))
+        else:
+            _d_sq_img(parts, cls_imgs.get(label), lx, rcy - _S_FC_LSZT // 2,
+                      _S_FC_LSZT, 8, _GOLD_EDGE, f"fcl{j}", sw=0)
+
+        # data cells
         for i, fac in enumerate(FACTIONS):
-            cx   = _S_INSET + _S_FC_LBL + i * _S_FC_CW + _S_FC_CW // 2
-            cell = (fc_data.get(fac) or [{}, {}, {}])[j]
-            has  = cell.get("games", 0) > 0
-            wr   = cell.get("winrate", 0)
-            g    = cell.get("games", 0)
-            if has:
+            cx = data_x + i * _S_FC_CW + _S_FC_CW // 2
+            if is_all:
+                r   = fac_lookup.get(fac, {"games": 0, "winrate": 0})
+                g   = r["games"]
+                wr  = r["winrate"]
+            else:
+                cell = (fc_data.get(fac) or [{}, {}, {}])[j]
+                g    = cell.get("games", 0)
+                wr   = cell.get("winrate", 0)
+            if g > 0:
                 wr_col = "#66bb6a" if wr >= 50 else "#ef5350"
                 parts.append(
-                    render_text(cx, rcy - 7, f"{wr}%", 24, wr_col, anchor="middle")
-                    + render_text(cx, rcy + 23, f"{g}x", 17, "#c0b8d8",
-                                  anchor="middle")
+                    render_text(cx, rcy - 6, f"{wr}%", 22, wr_col, anchor="middle")
+                    + render_text(cx, rcy + 18, f"{g}x", 15, "#c0b8d8", anchor="middle")
                 )
-            else:
-                pass
 
+    # vertical column separators
+    parts.append(
+        f'<line x1="{data_x}" y1="{content_y}" x2="{data_x}" y2="{y + _S_FC_H - _S_CELL_PAD}" '
+        f'stroke="{_GOLD_EDGE}" stroke-opacity="0.25" stroke-width="1"/>'
+    )
     for i in range(1, 8):
-        lx = _S_INSET + _S_FC_LBL + i * _S_FC_CW
+        lx = data_x + i * _S_FC_CW
         parts.append(
-            f'<line x1="{lx}" y1="{y}" x2="{lx}" y2="{y + _S_FC_H}" '
+            f'<line x1="{lx}" y1="{content_y}" x2="{lx}" y2="{y + _S_FC_H - _S_CELL_PAD}" '
             f'stroke="{_GOLD_EDGE}" stroke-opacity="0.12" stroke-width="1"/>'
         )
-    lx = _S_INSET + _S_FC_LBL
-    parts.append(
-        f'<line x1="{lx}" y1="{y}" x2="{lx}" y2="{y + _S_FC_H}" '
-        f'stroke="{_GOLD_EDGE}" stroke-opacity="0.2" stroke-width="1"/>'
-    )
 
 
 def _d_class_cell(parts, col, y, r, cls_imgs):
-    x   = _S_INSET + col * _S_CCW
-    cy  = y + _S_CCH // 2
-    isz = _S_CCH - 2 * _S_PAD
+    x   = _S_CONTENT_X + col * _S_CCW
+    isz = _S_CCH - 2 * _S_CELL_PAD - 2 * _S_PAD
+    cy  = y + _S_CELL_PAD + (_S_CCH - 2 * _S_CELL_PAD) // 2
     ix  = x + _S_PAD
     tx  = ix + isz + 16
     has = r["games"] > 0
-    _d_sq_img(parts, cls_imgs.get(r["class"]), ix, y + _S_PAD, isz, 12,
+    _d_sq_img(parts, cls_imgs.get(r["class"]), ix, y + _S_PAD + _S_CELL_PAD, isz, 12,
               _GOLD_EDGE, f"cls{col}", sw=0)
     parts.append(render_text(tx, cy - 18, r["class"], 30, "#f2eefc"))
     if has:

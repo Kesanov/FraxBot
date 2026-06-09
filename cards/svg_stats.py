@@ -9,7 +9,7 @@ from cards.svg_base import (
     _OUTER_PAD, _HDR_VPAD,
 )
 from cards.svg_primitives import (
-    _S_GAP, _S_HDR_H, _S_UCH, _S_COLS_U, _S_FC_H, _S_CCH,
+    _S_GAP, _S_HDR_H, _S_UCH, _S_COLS_U, _S_FC_H, _S_CCH, _S_CELL_PAD,
     _d_section_header, _d_section_bg,
     _d_ult_cell, _d_frax_row, _d_faction_fc_grid, _d_class_cell,
 )
@@ -44,7 +44,7 @@ def render_ult_section_img(ult_rows, frax_rows, out_path, scale=1):
     town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif")
                  for f in {r["faction"] for r in frax_rows}}
 
-    sec_h = _S_UCH * 3 + 5
+    sec_h = _S_UCH * 3 + 5 + 2 * _S_CELL_PAD
     total_h = _S_GAP + sec_h + _S_GAP
     ow = 800
     oh = total_h * ow // W
@@ -59,13 +59,14 @@ def render_ult_section_img(ult_rows, frax_rows, out_path, scale=1):
 
     ult_r1 = main_ult[:_S_COLS_U]
     ult_r2 = main_ult[_S_COLS_U: _S_COLS_U * 2]
+    ry = y + _S_CELL_PAD
     for i, r in enumerate(ult_r1):
-        _d_ult_cell(parts, i, 0, y, r, ult_imgs)
-    y += _S_UCH
+        _d_ult_cell(parts, i, 0, ry, r, ult_imgs)
+    ry += _S_UCH
     for i, r in enumerate(ult_r2):
-        _d_ult_cell(parts, i, 1, y, r, ult_imgs)
-    y += _S_UCH
-    _d_frax_row(parts, y, frax_rows, frax_icon, town_imgs)
+        _d_ult_cell(parts, i, 1, ry, r, ult_imgs)
+    ry += _S_UCH
+    _d_frax_row(parts, ry, frax_rows, frax_icon, town_imgs)
 
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
@@ -133,7 +134,7 @@ def render_stats_card(ult_rows, faction_rows, class_rows, frax_rows, fc_data,
     town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
     cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
 
-    ult_sec_h = _S_UCH * 3 + 5
+    ult_sec_h = _S_UCH * 3 + 5 + 2 * _S_CELL_PAD
 
     total_h = (_S_GAP
                + _S_HDR_H + ult_sec_h
@@ -159,14 +160,15 @@ def render_stats_card(ult_rows, faction_rows, class_rows, frax_rows, fc_data,
     _d_section_bg(parts, y, ult_sec_h)
     ult_r1 = main_ult[:_S_COLS_U]
     ult_r2 = main_ult[_S_COLS_U: _S_COLS_U * 2]
+    ry = y + _S_CELL_PAD
     for i, r in enumerate(ult_r1):
-        _d_ult_cell(parts, i, 0, y, r, ult_imgs)
-    y += _S_UCH
+        _d_ult_cell(parts, i, 0, ry, r, ult_imgs)
+    ry += _S_UCH
     for i, r in enumerate(ult_r2):
-        _d_ult_cell(parts, i, 1, y, r, ult_imgs)
-    y += _S_UCH
-    _d_frax_row(parts, y, frax_rows, frax_icon, town_imgs)
-    y += _S_UCH + _S_GAP
+        _d_ult_cell(parts, i, 1, ry, r, ult_imgs)
+    ry += _S_UCH
+    _d_frax_row(parts, ry, frax_rows, frax_icon, town_imgs)
+    y += ult_sec_h + _S_GAP
 
     _d_section_header(parts, y, "Faction winrate")
     y += _S_HDR_H

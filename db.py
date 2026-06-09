@@ -143,6 +143,11 @@ def record_match(winner_id, loser_id, w_faction, w_class, w_ult, l_faction, l_cl
     return {"winner_elo": new_w, "loser_elo": new_l, "delta": delta}
 
 
+def match_count() -> int:
+    with _conn() as con:
+        return con.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+
+
 def get_player(user_id):
     with _conn() as con:
         row = con.execute("SELECT * FROM players WHERE user_id=?", (str(user_id),)).fetchone()

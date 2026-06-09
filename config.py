@@ -130,14 +130,14 @@ ULTIMATES = [
 
 # Theme colors keyed by faction (used by both renderers).
 FACTION_COLORS = {
-    "Haven":      "#d9b44a",
+    "Haven":      "#edc452",
     "Sylvan":     "#4caf50",
     "Academy":    "#2196f3",
     "Dungeon":    "#ac3bdd",
     "Necropolis": "#607d8b",
     "Inferno":    "#e53935",
     "Fortress":   "#94FFFA",
-    "Stronghold": "#924302",
+    "Stronghold": "#af5104",
 }
 
 

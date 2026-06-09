@@ -240,7 +240,7 @@ def render_elo_curve(out_path, k=96, scale=2):
     return _save("".join(parts), out_path, scale)
 
 
-async def render_header_async(out_path, title="Frax Arena Leaderboard"):
+async def render_header_async(out_path, title="Frax arena Leaderboard"):
     return await asyncio.to_thread(render_header, out_path, title)
 
 
@@ -252,7 +252,6 @@ async def render_faction_table_async(rows, out_path):
     return await asyncio.to_thread(render_faction_table, rows, out_path)
 
 
-async def render_result_async(winner, loser, delta, out_path,
-                              winner_avatar=None, loser_avatar=None):
+async def render_result_async(winner, loser, delta, out_path, winner_avatar=None, loser_avatar=None):
     return await asyncio.to_thread(
         render_result, winner, loser, delta, out_path, winner_avatar, loser_avatar)

@@ -115,11 +115,15 @@ _initialized = False
 # leaderboard lock).
 _stats_lock = asyncio.Lock()
 
+# Match count at the time of the last winrate publish; used to skip the daily
+# refresh when no new games have been played since.
+_stats_published_at_count: int = -1
+
 # Drop pending games the enemy never confirmed after this many seconds.
 PENDING_TTL = 24 * 3600
 
 # How long the enemy has to confirm with 👍 before the game is discarded.
-CONFIRM_TIMEOUT = 300  # 5 minutes
+CONFIRM_TIMEOUT = 24 * 3600  # 24 hours
 
 # Cache of rendered avatar data URIs: user_id -> (data_uri | None, fetched_at).
 # Cache of display names: user_id -> (name | None, fetched_at).
@@ -290,7 +294,7 @@ class PickerView(discord.ui.View):
                        f"**{g.loser.display_name}** — recorded immediately.")
         else:
             content = (
-                f"{g.loser.mention} use {CONFIRM_EMOJI} to confirm within 5 minutes")
+                f"{g.loser.mention} use {CONFIRM_EMOJI} to confirm within 24h")
 
         channel = await _resolve_channel(config.REPORTS_CHANNEL_ID)
         if channel is None:
@@ -583,15 +587,21 @@ async def publish_winrate_stats():
         await _purge_bot_messages(channel, limit=20)
         await _post_files(channel, [h1, s1, h2, s2, h3, s3])
 
+        global _stats_published_at_count
+        _stats_published_at_count = db.match_count()
+
 
 async def _winrate_daily_loop():
-    """Repost stats cards once per day at UTC midnight."""
+    """Repost stats cards once per day at UTC midnight; skips if no new games."""
     while True:
         now = datetime.now(timezone.utc)
         next_midnight = (now + timedelta(days=1)).replace(
             hour=0, minute=0, second=0, microsecond=0)
         await asyncio.sleep((next_midnight - now).total_seconds())
         try:
+            if db.match_count() == _stats_published_at_count:
+                log.info("winrate stats up to date, skipping daily refresh")
+                continue
             await publish_winrate_stats()
         except Exception:
             log.exception("daily stats refresh failed")
