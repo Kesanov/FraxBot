@@ -9,9 +9,9 @@ from cards.svg_base import (
     _OUTER_PAD, _HDR_VPAD,
 )
 from cards.svg_primitives import (
-    _S_GAP, _S_HDR_H, _S_UCH, _S_COLS_U, _S_FC_H, _S_CCH, _S_CELL_PAD,
+    _S_GAP, _S_HDR_H, _S_UCH, _S_COLS_U, _S_FC_H, _S_FF_H, _S_CCH, _S_CELL_PAD,
     _d_section_header, _d_section_bg,
-    _d_ult_cell, _d_frax_row, _d_faction_fc_grid, _d_class_cell,
+    _d_ult_cell, _d_frax_row, _d_faction_fc_grid, _d_faction_ff_grid, _d_class_cell,
 )
 
 
@@ -86,11 +86,32 @@ def render_faction_section_img(faction_rows, fc_data, out_path, scale=1):
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
         f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">',
-
     ]
     y = _S_GAP
     _d_section_bg(parts, y, _S_FC_H)
     _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs)
+
+    parts.append("</svg>")
+    return _save("".join(parts), out_path, scale)
+
+
+def render_faction_ff_section_img(ff_data, out_path, scale=1):
+    """Render the Faction × Faction winrate section body (no header bar)."""
+    from config import FACTIONS
+
+    town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
+
+    total_h = _S_GAP + _S_FF_H + _S_GAP
+    ow = 800
+    oh = total_h * ow // W
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
+        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">',
+    ]
+    y = _S_GAP
+    _d_section_bg(parts, y, _S_FF_H)
+    _d_faction_ff_grid(parts, y, ff_data, town_imgs)
 
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)

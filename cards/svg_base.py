@@ -222,6 +222,42 @@ def _darken(hex_col, factor=0.4):
     return f"#{int(r*factor):02x}{int(g*factor):02x}{int(b*factor):02x}"
 
 
+def render_winrate(x, y, text, size, fill, weight="400", anchor="middle", extra=""):
+    """Like render_text but first digit is size*1.2 and the rest size*0.8, centered on x."""
+    s = str(text)
+    first, rest = s[0], s[1:]
+    sz_big  = size * 1.2
+    sz_rest = size * 1.0
+    path = _text_font_path(weight, False)
+    try:
+        font_big  = _pil_font(path, sz_big)
+        font_rest = _pil_font(path, sz_rest)
+        w_big  = font_big.getlength(first)
+        w_rest = font_rest.getlength(rest) if rest else 0
+    except Exception:
+        w_big  = len(first) * sz_big * 0.5
+        w_rest = len(rest)  * sz_rest * 0.5
+    total = w_big + w_rest
+    x0 = x - total / 2 if anchor == "middle" else x
+    # baseline alignment: bigger text sits higher; shift big down by half size difference
+    y_big  = y + (sz_big - size) * 0.5
+    y_rest = y + (sz_rest - size) * 0.5
+    out = (f'<text x="{x0:.1f}" y="{y_big:.1f}" font-size="{sz_big:.1f}" '
+           f'font-family="{_FONT_FAMILY}" font-weight="{weight}" fill="{fill}"{extra}'
+           f'>{_esc(first)}</text>')
+    if rest:
+        out += (f'<text x="{x0 + w_big:.1f}" y="{y_rest:.1f}" font-size="{sz_rest:.1f}" '
+                f'font-family="{_FONT_FAMILY}" font-weight="{weight}" fill="{fill}"{extra}'
+                f'>{_esc(rest)}</text>')
+    return out
+
+
+def render_winrate_outlined(x, y, text, size, fill, stroke=None, sw=0.0, **kw):
+    sc = stroke if stroke is not None else _darken(fill)
+    return (render_winrate(x, y, text, size, sc, extra=f' stroke="{sc}" stroke-width="{sw * 2}"', **kw)
+            + render_winrate(x, y, text, size, fill, **kw))
+
+
 def render_text_outlined(x, y, text, size, fill, stroke=None, sw=2, invert=False, **kw):
     """render_text with a same-hue outline underneath the fill.
     invert=True: dark fill with a light stroke (inverse style)."""

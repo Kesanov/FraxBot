@@ -93,6 +93,25 @@ def _fc(w, l):
     return {"wins": w, "losses": l, "games": g, "winrate": round(100 * w / g) if g else 0}
 
 
+MOCK_FF_DATA = {
+    "Haven":      {"Sylvan": _fc(12, 8),  "Academy": _fc(7, 13), "Dungeon": _fc(5, 15),
+                   "Necropolis": _fc(10, 10), "Inferno": _fc(14, 6), "Fortress": _fc(9, 11), "Stronghold": _fc(11, 9)},
+    "Sylvan":     {"Haven": _fc(8, 12),   "Academy": _fc(13, 7), "Dungeon": _fc(6, 14),
+                   "Necropolis": _fc(11, 9), "Inferno": _fc(9, 11), "Fortress": _fc(15, 5), "Stronghold": _fc(7, 13)},
+    "Academy":    {"Haven": _fc(13, 7),   "Sylvan": _fc(7, 13),  "Dungeon": _fc(10, 10),
+                   "Necropolis": _fc(8, 12), "Inferno": _fc(12, 8), "Fortress": _fc(6, 14), "Stronghold": _fc(14, 6)},
+    "Dungeon":    {"Haven": _fc(15, 5),   "Sylvan": _fc(14, 6),  "Academy": _fc(10, 10),
+                   "Necropolis": _fc(13, 7), "Inferno": _fc(11, 9), "Fortress": _fc(9, 11), "Stronghold": _fc(8, 12)},
+    "Necropolis": {"Haven": _fc(10, 10),  "Sylvan": _fc(9, 11),  "Academy": _fc(12, 8),
+                   "Dungeon": _fc(7, 13), "Inferno": _fc(14, 6),  "Fortress": _fc(11, 9), "Stronghold": _fc(6, 14)},
+    "Inferno":    {"Haven": _fc(6, 14),   "Sylvan": _fc(11, 9),  "Academy": _fc(8, 12),
+                   "Dungeon": _fc(9, 11), "Necropolis": _fc(6, 14), "Fortress": _fc(13, 7), "Stronghold": _fc(10, 10)},
+    "Fortress":   {"Haven": _fc(11, 9),   "Sylvan": _fc(5, 15),  "Academy": _fc(14, 6),
+                   "Dungeon": _fc(11, 9), "Necropolis": _fc(9, 11), "Inferno": _fc(7, 13), "Stronghold": _fc(12, 8)},
+    "Stronghold": {"Haven": _fc(9, 11),   "Sylvan": _fc(13, 7),  "Academy": _fc(6, 14),
+                   "Dungeon": _fc(12, 8), "Necropolis": _fc(14, 6), "Inferno": _fc(10, 10), "Fortress": _fc(8, 12)},
+}
+
 MOCK_FC_DATA = {
     "Haven":      [_fc(12, 8),  _fc(7, 13),  _fc(0, 0)],
     "Sylvan":     [_fc(9, 11),  _fc(0, 0),   _fc(10, 10)],
@@ -136,6 +155,7 @@ def render_stats(use_mock):
             cls_rows  = db.class_stats()
             frax_rows = db.frax_by_faction()
             fc_rows   = db.faction_class_stats()
+            ff_rows   = db.faction_faction_stats() if hasattr(db, "faction_faction_stats") else MOCK_FF_DATA
             if not any(r["games"] for r in ult_rows):
                 raise ValueError("empty db")
         except Exception as e:
@@ -144,15 +164,16 @@ def render_stats(use_mock):
 
     if use_mock:
         ult_rows, fac_rows, cls_rows = MOCK_ULTIMATES, MOCK_FACTIONS, MOCK_CLASSES
-        frax_rows, fc_rows = MOCK_FRAX, MOCK_FC_DATA
+        frax_rows, fc_rows, ff_rows = MOCK_FRAX, MOCK_FC_DATA, MOCK_FF_DATA
 
     renders = [
         ("h1_ult", lambda: renderer.render_stats_header_img("Ultimate winrate", _out("preview_h1_ult.webp"))),
         ("s1_ult", lambda: renderer.render_ult_section_img(ult_rows, frax_rows, _out("preview_s1_ult.webp"))),
         ("h2_fac", lambda: renderer.render_stats_header_img("Faction winrate", _out("preview_h2_fac.webp"))),
         ("s2_fac", lambda: renderer.render_faction_section_img(fac_rows, fc_rows, _out("preview_s2_fac.webp"))),
-        ("h3_cls", lambda: renderer.render_stats_header_img("Class winrate", _out("preview_h3_cls.webp"))),
-        ("s3_cls", lambda: renderer.render_class_section_img(cls_rows, _out("preview_s3_cls.webp"))),
+        ("s3_ff",  lambda: renderer.render_faction_ff_section_img(ff_rows, _out("preview_s3_ff.webp"))),
+        ("h4_cls", lambda: renderer.render_stats_header_img("Class winrate", _out("preview_h4_cls.webp"))),
+        ("s4_cls", lambda: renderer.render_class_section_img(cls_rows, _out("preview_s4_cls.webp"))),
     ]
     for name, fn in renders:
         print(f"{name}   ->", fn())

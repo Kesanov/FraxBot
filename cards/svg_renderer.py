@@ -24,6 +24,7 @@ from cards.svg_stats import (  # noqa: F401
     render_stats_header_img,
     render_ult_section_img,
     render_faction_section_img,
+    render_faction_ff_section_img,
     render_class_section_img,
     render_stats_card,
     render_stats_card_async,
