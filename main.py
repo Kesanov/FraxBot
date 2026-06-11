@@ -567,6 +567,7 @@ async def publish_winrate_stats():
         cls_rows  = db.class_stats()
         frax_rows = db.frax_by_faction()
         fc_rows   = db.faction_class_stats()
+        ff_rows   = db.faction_faction_stats()
 
         d    = config.CACHE_DIR
         loop = asyncio.get_event_loop()
@@ -578,6 +579,8 @@ async def publish_winrate_stats():
         h2 = await _render_stats_header("Faction winrate")
         s2 = await loop.run_in_executor(None, renderer.render_faction_section_img,
                                         fac_rows, fc_rows, os.path.join(d, "stats_s2.webp"))
+        s2ff = await loop.run_in_executor(None, renderer.render_faction_ff_section_img,
+                                          ff_rows, os.path.join(d, "stats_s2ff.webp"))
         await asyncio.sleep(2)
         h3 = await _render_stats_header("Class winrate")
         s3 = await loop.run_in_executor(None, renderer.render_class_section_img,
@@ -585,7 +588,7 @@ async def publish_winrate_stats():
 
         # delete the bot's previous stats messages before reposting
         await _purge_bot_messages(channel, limit=20)
-        await _post_files(channel, [h1, s1, h2, s2, h3, s3])
+        await _post_files(channel, [h1, s1, h2, s2, s2ff, h3, s3])
 
         global _stats_published_at_count
         _stats_published_at_count = db.match_count()

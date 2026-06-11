@@ -263,6 +263,34 @@ def faction_class_stats():
     return out
 
 
+def faction_faction_stats():
+    """WR for each ordered faction pair, mirrors excluded. Returns {fac_a: {fac_b: {games, winrate}}}."""
+    with _conn() as con:
+        wins = _bucketed(
+            ((wf, lf), ver, cnt) for wf, lf, ver, cnt in con.execute(
+                "SELECT winner_faction, loser_faction, version, COUNT(*) FROM matches "
+                "WHERE winner_faction != loser_faction "
+                "GROUP BY winner_faction, loser_faction, version"
+            )
+        )
+        losses = _bucketed(
+            ((wf, lf), ver, cnt) for wf, lf, ver, cnt in con.execute(
+                "SELECT loser_faction, winner_faction, version, COUNT(*) FROM matches "
+                "WHERE winner_faction != loser_faction "
+                "GROUP BY loser_faction, winner_faction, version"
+            )
+        )
+    out = {}
+    for fa in FACTIONS:
+        out[fa] = {}
+        for fb in FACTIONS:
+            if fa == fb:
+                continue
+            wr, w, l = _weighted((fa, fb), wins, losses)
+            out[fa][fb] = {"wins": w, "losses": l, "games": w + l, "winrate": wr}
+    return out
+
+
 def class_stats():
     """Global per-class record, mirrors excluded (Warrior/Warmage/Warlock), original order."""
     with _conn() as con:

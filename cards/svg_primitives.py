@@ -46,6 +46,7 @@ _S_CCH     = 186   # base 146 + 2 * _S_CELL_PAD
 _S_FRAX_TOWN_ISZ = round(_S_UISZ * 0.7)   # 60
 
 _S_CELL_BG = 'fill="#ffffff" fill-opacity="0.05"'
+_S_MIN_GAMES = 1   # minimum games required to display a winrate
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +138,7 @@ def _d_frax_row(parts, y, frax_rows, frax_icon, town_imgs):
         iy = y + _S_PAD + (_S_UISZ - isz) // 2
         ix = cx - isz // 2
         _d_sq_img(parts, img, ix, iy, isz, 12, border_col, f"frc{col}", sw=3, so=0.88)
-        _d_stats(parts, cx, yg, games, winrate, games > 0, fg=18, fw=36)
+        _d_stats(parts, cx, yg, games, winrate, games >= _S_MIN_GAMES, fg=18, fw=36)
 
     _cell(0, frax_icon, _S_UISZ, _GOLD_EDGE, tf_games, tf_wr)
     for i, r in enumerate(frax_rows):
@@ -209,7 +210,7 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
                 cell = (fc_data.get(fac) or [{}, {}, {}])[j]
                 g    = cell.get("games", 0)
                 wr   = cell.get("winrate", 0)
-            if g > 0:
+            if g >= _S_MIN_GAMES:
                 wr_col = "#00e676" if wr >= 50 else "#ff8a80"
                 wr_luma = "#b9f5d8" if wr >= 50 else "#ffc4bc"
                 parts.append(
@@ -233,9 +234,10 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
 def _d_faction_ff_grid(parts, y, ff_data, town_imgs):
     """4 rows × 8 columns — all 28 unique faction matchups, no redundancy.
 
-    Row r: diagonal cell (col r) shows FACTIONS[r] + FACTIONS[7-r] icons.
-    col c > r: FACTIONS[r] vs FACTIONS[c]
-    col c < r: FACTIONS[7-r] vs FACTIONS[7-c]
+    Reversed column layout: diagonal at visual col 7-r for row r.
+    Row r: diagonal cell (visual col 7-r) shows FACTIONS[r] + FACTIONS[7-r] icons.
+    visual col vc < 7-r: FACTIONS[r] vs FACTIONS[7-vc]
+    visual col vc > 7-r: FACTIONS[7-r] vs FACTIONS[vc]
     """
     from config import FACTIONS
 
@@ -252,7 +254,7 @@ def _d_faction_ff_grid(parts, y, ff_data, town_imgs):
         cell = (ff_data.get(fac_a) or {}).get(fac_b, {})
         g  = cell.get("games", 0)
         wr = cell.get("winrate", 0)
-        if g <= 0:
+        if g < _S_MIN_GAMES:
             return ""
         wr_col  = "#00e676" if wr >= 50 else "#ff8a80"
         wr_luma = "#249b61" if wr >= 50 else "#a22919"
@@ -261,25 +263,15 @@ def _d_faction_ff_grid(parts, y, ff_data, town_imgs):
 
     overlays = []  # rendered last so nothing covers them
 
-    # top column headers — cols 0-2 get their paired faction as a 50% overlay
-    for i, fac in enumerate(FACTIONS):
+    # top column headers — reversed order; col 7 is left empty (diagonal shown in data rows)
+    for i in range(7):
+        fac   = FACTIONS[7 - i]
         cx    = _col_cx(i)
         isz   = _S_FC_ISZT
         ix    = cx - isz // 2
         iy    = content_y + (_S_FC_COL_H - isz) // 2
         col_c = FACTION_COLORS.get(fac, "#90a4ae")
-        if i == 0:
-            # col 0: show full-size paired faction (Stronghold) only
-            paired = FACTIONS[7]
-            col_p  = FACTION_COLORS.get(paired, "#90a4ae")
-            _d_sq_img(parts, town_imgs.get(paired), ix, iy, isz, 8, col_p, f"ffch{i}", sw=2, so=0.8)
-        elif i < 3:
-            paired = FACTIONS[7 - i]
-            col_p  = FACTION_COLORS.get(paired, "#90a4ae")
-            _d_overlay_sq_img(parts, overlays, town_imgs.get(fac), town_imgs.get(paired),
-                              ix, iy, isz, 8, col_c, col_p, f"ffch{i}")
-        else:
-            _d_sq_img(parts, town_imgs.get(fac), ix, iy, isz, 8, col_c, f"ffch{i}", sw=2, so=0.8)
+        _d_sq_img(parts, town_imgs.get(fac), ix, iy, isz, 8, col_c, f"ffch{i}", sw=2, so=0.8)
 
     parts.append(
         f'<line x1="{_S_CONTENT_X}" y1="{data_y}" x2="{right_x}" y2="{data_y}" '
@@ -301,25 +293,26 @@ def _d_faction_ff_grid(parts, y, ff_data, town_imgs):
 
         row_isz = round(_S_FC_ISZT * 0.7)
 
-        # left row label — row 0 identifies fac_a (Haven), rows 1-3 identify fac_b
-        lbl_fac = fac_a if r == 0 else fac_b
+        # left row label — row 0 identifies fac_a (Haven), rows 1-3 identify fac_a
+        lbl_fac = fac_a
         lx      = _S_CONTENT_X + (_S_FF_LBL - row_isz) // 2
         col_c   = FACTION_COLORS.get(lbl_fac, "#90a4ae")
         _d_sq_img(parts, town_imgs.get(lbl_fac), lx, row_cy - row_isz // 2,
                   row_isz, 8, col_c, f"fflbl{r}", sw=2, so=0.8)
 
-        for c in range(8):
-            cx = _col_cx(c)
-            if c == r and r > 0:
+        for vc in range(8):
+            cx = _col_cx(vc)
+            if vc == 7 - r:
+                # diagonal cell: show fac_b ([Stronghold, Fortress, Inferno, Necropolis] for rows 0-3)
                 sz    = row_isz
                 ix    = cx - sz // 2
                 iy    = row_cy - sz // 2
-                col_a = FACTION_COLORS.get(fac_a, "#90a4ae")
-                _d_sq_img(parts, town_imgs.get(fac_a), ix, iy, sz, 8, col_a, f"ffd{r}", sw=2, so=0.8)
-            elif c > r:
-                parts.append(_cell_svg(cx, row_cy, fac_a, FACTIONS[c]))
+                col_b = FACTION_COLORS.get(fac_b, "#90a4ae")
+                _d_sq_img(parts, town_imgs.get(fac_b), ix, iy, sz, 8, col_b, f"ffd{r}", sw=2, so=0.8)
+            elif vc < 7 - r:
+                parts.append(_cell_svg(cx, row_cy, fac_a, FACTIONS[7 - vc]))
             else:
-                parts.append(_cell_svg(cx, row_cy, fac_b, FACTIONS[7 - c]))
+                parts.append(_cell_svg(cx, row_cy, fac_b, FACTIONS[vc]))
 
     # vertical separator between label and data
     parts.append(
@@ -343,7 +336,7 @@ def _d_class_cell(parts, col, y, r, cls_imgs):
     cy  = y + _S_CELL_PAD + (_S_CCH - 2 * _S_CELL_PAD) // 2
     ix  = x + _S_PAD
     tx  = ix + isz + 16
-    has = r["games"] > 0
+    has = r["games"] >= _S_MIN_GAMES
     _d_sq_img(parts, cls_imgs.get(r["class"]), ix, y + _S_PAD + _S_CELL_PAD, isz, 12,
               _GOLD_EDGE, f"cls{col}", sw=0)
     parts.append(render_text(tx, cy - 18, r["class"], 30, "#f2eefc"))
