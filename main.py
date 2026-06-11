@@ -588,7 +588,7 @@ async def publish_winrate_stats():
 
         # delete the bot's previous stats messages before reposting
         await _purge_bot_messages(channel, limit=20)
-        await _post_files(channel, [h1, s1, h2, s2, s2ff, h3, s3])
+        await _post_files(channel, [h1, s1, h2, s2ff, h3, s2, s3])
 
         global _stats_published_at_count
         _stats_published_at_count = db.match_count()

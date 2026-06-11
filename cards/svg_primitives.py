@@ -37,7 +37,7 @@ _S_FC_H     = _S_CELL_PAD + _S_FC_COL_H + 4 * _S_FC_ROW_H + 2 * _S_ALL_SEP_PAD +
 
 _S_FF_LBL   = _S_FC_LBL                                 # left label column width (same as fc grid)
 _S_FF_CW    = (_S_W_CONTENT - _S_FF_LBL) // 8          # faction column width (~107)
-_S_FF_ROW_H = 90                                        # row height
+_S_FF_ROW_H = 70                                        # row height
 _S_FF_H     = _S_CELL_PAD + _S_FC_COL_H + 4 * _S_FF_ROW_H + _S_CELL_PAD
 
 _S_CCW     = _S_W_CONTENT // 3   # 320
