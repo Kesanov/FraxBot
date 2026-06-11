@@ -161,6 +161,13 @@ _SMALL_CAPS_RATIO = 0.75
 _CAP_RATIO = 0.70  # cap height / em for Crimson Pro
 
 
+def text_cap_height(size: float) -> float:
+    """Visual height of capital letters at the given font size (top-of-cap to baseline)."""
+    return size * _CAP_RATIO
+
+
+
+
 def _case_runs(text):
     """Split into (is_large, substring) runs for small-caps.
     Spaces and punctuation are always their own runs so they never appear at
