@@ -37,7 +37,7 @@ _S_FC_H     = _S_CELL_PAD + _S_FC_COL_H + 4 * _S_FC_ROW_H + 2 * _S_ALL_SEP_PAD +
 
 _S_FF_LBL   = _S_FC_LBL                                 # left label column width (same as fc grid)
 _S_FF_CW    = (_S_W_CONTENT - _S_FF_LBL) // 8          # faction column width (~107)
-_S_FF_ROW_H = 70                                        # row height
+_S_FF_ROW_H = 80                                        # row height
 _S_FF_H     = _S_CELL_PAD + _S_FC_COL_H + 4 * _S_FF_ROW_H + _S_CELL_PAD
 
 _S_CCW     = _S_W_CONTENT // 3   # 320
@@ -47,6 +47,15 @@ _S_FRAX_TOWN_ISZ = round(_S_UISZ * 0.7)   # 60
 
 _S_CELL_BG = 'fill="#ffffff" fill-opacity="0.05"'
 _S_MIN_GAMES = 1   # minimum games required to display a winrate
+
+
+def _wr_colors(wr):
+    """Return (fill, shadow) for a winrate value: red < 40% < green < 60% < gold."""
+    if wr >= 61:
+        return "#d1b908", "#a07800"
+    if wr >= 40:
+        return "#93d7b7", "#249b61" # 00e676
+    return "#ff8a80", "#a22919"
 
 
 # ---------------------------------------------------------------------------
@@ -83,8 +92,7 @@ def _d_overlay_sq_img(parts, overlay_parts, img_main, img_overlay, x, y, sz, rx,
 def _d_stats(parts, cx, y_games, games, winrate, has, fg=14, fw=32):
     if not has:
         return
-    wr_col = "#00e676" if winrate >= 50 else "#ff8a80"
-    wr_luma = "#249b61" if winrate >= 50 else "#a22919"
+    wr_col, wr_luma = _wr_colors(winrate)
     parts.append(
         render_winrate_outlined(cx, y_games, f"{winrate}%", fw, wr_col, stroke=wr_luma, sw=0.0, anchor="middle")
         + render_text(cx, y_games + fw - 11, f"{games}x", fg, "#c0b8d8", anchor="middle")
@@ -211,8 +219,7 @@ def _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs):
                 g    = cell.get("games", 0)
                 wr   = cell.get("winrate", 0)
             if g >= _S_MIN_GAMES:
-                wr_col = "#00e676" if wr >= 50 else "#ff8a80"
-                wr_luma = "#b9f5d8" if wr >= 50 else "#ffc4bc"
+                wr_col, wr_luma = _wr_colors(wr)
                 parts.append(
                     render_winrate_outlined(cx, rcy - 6, f"{wr}%", 36, wr_col, stroke=wr_luma, sw=0.0, anchor="middle")
                     + render_text(cx, rcy + 18, f"{g}x", 18, "#c0b8d8", anchor="middle")
@@ -256,8 +263,7 @@ def _d_faction_ff_grid(parts, y, ff_data, town_imgs):
         wr = cell.get("winrate", 0)
         if g < _S_MIN_GAMES:
             return ""
-        wr_col  = "#00e676" if wr >= 50 else "#ff8a80"
-        wr_luma = "#249b61" if wr >= 50 else "#a22919"
+        wr_col, wr_luma = _wr_colors(wr)
         return (render_winrate_outlined(cx, cy + 4, f"{wr}%", 36, wr_col, stroke=wr_luma, sw=0.0, anchor="middle")
                 + render_text(cx, cy + 25, f"{g}x", 18, "#c0b8d8", anchor="middle"))
 
@@ -341,8 +347,7 @@ def _d_class_cell(parts, col, y, r, cls_imgs):
               _GOLD_EDGE, f"cls{col}", sw=0)
     parts.append(render_text(tx, cy - 18, r["class"], 30, "#f2eefc"))
     if has:
-        wr_col = "#00e676" if r["winrate"] >= 50 else "#ff8a80"
-        wr_luma = "#b9f5d8" if r["winrate"] >= 50 else "#ffc4bc"
+        wr_col, wr_luma = _wr_colors(r["winrate"])
         parts.append(
             render_winrate_outlined(tx - 4, cy + 18, f'{r["winrate"]}%', 48, wr_col, stroke=wr_luma, sw=0.0, anchor="start")
             + render_text(tx, cy + 48, f'{r["games"]}x', 21, "#c0b8d8")
