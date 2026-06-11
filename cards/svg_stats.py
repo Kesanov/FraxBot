@@ -9,9 +9,8 @@ from cards.svg_base import (
     _OUTER_PAD, _HDR_VPAD,
 )
 from cards.svg_primitives import (
+    SVGCanvas,
     _S_GAP, _S_HDR_H, _S_UCH, _S_COLS_U, _S_FC_H, _S_FF_H, _S_CCH, _S_CELL_PAD,
-    _d_section_header, _d_section_bg,
-    _d_ult_cell, _d_frax_row, _d_faction_fc_grid, _d_faction_ff_grid, _d_class_cell,
 )
 
 
@@ -23,14 +22,14 @@ def render_stats_header_img(title, out_path, scale=1):
     ow    = 800
     oh    = h * ow // W
     cy    = outer + ih // 2
-    parts = [
+    svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
-        f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">',
-        _cell(_OUTER_PAD, outer, W - 2*_OUTER_PAD, ih, 16, width=_CELL_STROKE_W * 2)
-        + render_engraved(W//2, cy, title, 60, "#ffd54f", small_caps=True),
-    ]
-    parts.append("</svg>")
-    return _save("".join(parts), out_path, scale)
+        f'viewBox="0 0 {W} {h}" font-family="{_FONT_FAMILY}">'
+        + _cell(_OUTER_PAD, outer, W - 2*_OUTER_PAD, ih, 16, width=_CELL_STROKE_W * 2)
+        + render_engraved(W//2, cy, title, 60, "#ffd54f", small_caps=True)
+        + "</svg>"
+    )
+    return _save(svg, out_path, scale)
 
 
 def render_ult_section_img(ult_rows, frax_rows, out_path, scale=1):
@@ -38,107 +37,97 @@ def render_ult_section_img(ult_rows, frax_rows, out_path, scale=1):
     main_ult = [r for r in ult_rows if r["ultimate"] != "Frax Essence"]
     main_ult.sort(key=lambda r: r["games"], reverse=True)
 
-    ult_imgs  = {r["ultimate"]: _local_data_uri(_ULTIMATES_DIR, r["ultimate"] + ".png")
-                 for r in main_ult}
-    frax_icon = _local_data_uri(_ULTIMATES_DIR, "Frax Essence.png")
-    town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif")
-                 for f in {r["faction"] for r in frax_rows}}
-
-    sec_h = _S_UCH * 3 + 5 + 2 * _S_CELL_PAD
+    sec_h   = _S_UCH * 3 + 5 + 2 * _S_CELL_PAD
     total_h = _S_GAP + sec_h + _S_GAP
     ow = 800
     oh = total_h * ow // W
 
-    parts = [
+    canvas = SVGCanvas()
+    canvas.ult_imgs  = {r["ultimate"]: _local_data_uri(_ULTIMATES_DIR, r["ultimate"] + ".png") for r in main_ult}
+    canvas.frax_icon = _local_data_uri(_ULTIMATES_DIR, "Frax Essence.png")
+    canvas.town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in {r["faction"] for r in frax_rows}}
+    canvas.y = _S_GAP
+
+    canvas.write(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
-        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">',
-
-    ]
-    y = _S_GAP
-    _d_section_bg(parts, y, sec_h)
-
-    ult_r1 = main_ult[:_S_COLS_U]
-    ult_r2 = main_ult[_S_COLS_U: _S_COLS_U * 2]
-    ry = y + _S_CELL_PAD
-    for i, r in enumerate(ult_r1):
-        _d_ult_cell(parts, i, 0, ry, r, ult_imgs)
-    ry += _S_UCH
-    for i, r in enumerate(ult_r2):
-        _d_ult_cell(parts, i, 1, ry, r, ult_imgs)
-    ry += _S_UCH
-    _d_frax_row(parts, ry, frax_rows, frax_icon, town_imgs)
-
-    parts.append("</svg>")
-    return _save("".join(parts), out_path, scale)
+        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">'
+    )
+    canvas.section_bg(sec_h)
+    for i, r in enumerate(main_ult[:_S_COLS_U]):
+        canvas.ult_cell(i, 0, r)
+    for i, r in enumerate(main_ult[_S_COLS_U: _S_COLS_U * 2]):
+        canvas.ult_cell(i, 1, r)
+    canvas.frax_row(frax_rows)
+    canvas.write("</svg>")
+    return _save(canvas.render(), out_path, scale)
 
 
 def render_faction_section_img(faction_rows, fc_data, out_path, scale=1):
     """Render the Faction Winrate section body (no header bar)."""
     from config import FACTIONS, CLASSES
 
-    town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
-    cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
-
     total_h = _S_GAP + _S_FC_H + _S_GAP
     ow = 800
     oh = total_h * ow // W
 
-    parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
-        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">',
-    ]
-    y = _S_GAP
-    _d_section_bg(parts, y, _S_FC_H)
-    _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs)
+    canvas = SVGCanvas()
+    canvas.town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
+    canvas.cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
+    canvas.y = _S_GAP
 
-    parts.append("</svg>")
-    return _save("".join(parts), out_path, scale)
+    canvas.write(
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
+        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">'
+    )
+    canvas.section_bg(_S_FC_H)
+    canvas.faction_fc_grid(faction_rows, fc_data)
+    canvas.write("</svg>")
+    return _save(canvas.render(), out_path, scale)
 
 
 def render_faction_ff_section_img(ff_data, out_path, scale=1):
     """Render the Faction × Faction winrate section body (no header bar)."""
     from config import FACTIONS
 
-    town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
-
     total_h = _S_GAP + _S_FF_H + _S_GAP
     ow = 800
     oh = total_h * ow // W
 
-    parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
-        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">',
-    ]
-    y = _S_GAP
-    _d_section_bg(parts, y, _S_FF_H)
-    _d_faction_ff_grid(parts, y, ff_data, town_imgs)
+    canvas = SVGCanvas()
+    canvas.town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
+    canvas.y = _S_GAP
 
-    parts.append("</svg>")
-    return _save("".join(parts), out_path, scale)
+    canvas.write(
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
+        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">'
+    )
+    canvas.section_bg(_S_FF_H)
+    canvas.faction_ff_grid(ff_data)
+    canvas.write("</svg>")
+    return _save(canvas.render(), out_path, scale)
 
 
 def render_class_section_img(class_rows, out_path, scale=1):
     """Render the Class Winrate section body (no header bar)."""
     from config import CLASSES
 
-    cls_imgs = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
-
     total_h = _S_GAP + _S_CCH + _S_GAP
     ow = 800
     oh = total_h * ow // W
 
-    parts = [
+    canvas = SVGCanvas()
+    canvas.cls_imgs = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
+    canvas.y = _S_GAP
+
+    canvas.write(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{ow}" height="{oh}" '
-        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">',
-
-    ]
-    y = _S_GAP
-    _d_section_bg(parts, y, _S_CCH)
+        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">'
+    )
+    canvas.section_bg(_S_CCH)
     for i, r in enumerate(class_rows):
-        _d_class_cell(parts, i, y, r, cls_imgs)
-
-    parts.append("</svg>")
-    return _save("".join(parts), out_path, scale)
+        canvas.class_cell(i, r)
+    canvas.write("</svg>")
+    return _save(canvas.render(), out_path, scale)
 
 
 def render_stats_card(ult_rows, faction_rows, class_rows, frax_rows, fc_data,
@@ -149,62 +138,42 @@ def render_stats_card(ult_rows, faction_rows, class_rows, frax_rows, fc_data,
     main_ult = [r for r in ult_rows if r["ultimate"] != "Frax Essence"]
     main_ult.sort(key=lambda r: r["games"], reverse=True)
 
-    ult_imgs  = {r["ultimate"]: _local_data_uri(_ULTIMATES_DIR, r["ultimate"] + ".png")
-                 for r in main_ult}
-    frax_icon = _local_data_uri(_ULTIMATES_DIR, "Frax Essence.png")
-    town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
-    cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
-
     ult_sec_h = _S_UCH * 3 + 5 + 2 * _S_CELL_PAD
-
-    total_h = (_S_GAP
-               + _S_HDR_H + ult_sec_h
-               + _S_GAP
-               + _S_HDR_H + _S_FC_H
-               + _S_GAP
-               + _S_HDR_H + _S_CCH
-               + _S_GAP)
-
+    total_h   = _S_GAP + _S_HDR_H + ult_sec_h + _S_GAP + _S_HDR_H + _S_FC_H + _S_GAP + _S_HDR_H + _S_CCH + _S_GAP
     out_w = 800
     out_h = total_h * out_w // W
 
-    parts = [
+    canvas = SVGCanvas()
+    canvas.ult_imgs  = {r["ultimate"]: _local_data_uri(_ULTIMATES_DIR, r["ultimate"] + ".png") for r in main_ult}
+    canvas.frax_icon = _local_data_uri(_ULTIMATES_DIR, "Frax Essence.png")
+    canvas.town_imgs = {f: _local_data_uri(_TOWNS_DIR, f + ".gif") for f in FACTIONS}
+    canvas.cls_imgs  = {c: _local_data_uri(_ULTIMATES_DIR, c + ".png") for c in CLASSES}
+    canvas.y = _S_GAP
+
+    canvas.write(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
-        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">',
+        f'viewBox="0 0 {W} {total_h}" font-family="{_FONT_FAMILY}">'
+    )
 
-    ]
+    canvas.section_header("Ultimate winrate")
+    canvas.section_bg(ult_sec_h)
+    for i, r in enumerate(main_ult[:_S_COLS_U]):
+        canvas.ult_cell(i, 0, r)
+    for i, r in enumerate(main_ult[_S_COLS_U: _S_COLS_U * 2]):
+        canvas.ult_cell(i, 1, r)
+    canvas.frax_row(frax_rows)
 
-    y = _S_GAP
+    canvas.section_header("Faction winrate")
+    canvas.section_bg(_S_FC_H)
+    canvas.faction_fc_grid(faction_rows, fc_data)
 
-    _d_section_header(parts, y, "Ultimate winrate")
-    y += _S_HDR_H
-    _d_section_bg(parts, y, ult_sec_h)
-    ult_r1 = main_ult[:_S_COLS_U]
-    ult_r2 = main_ult[_S_COLS_U: _S_COLS_U * 2]
-    ry = y + _S_CELL_PAD
-    for i, r in enumerate(ult_r1):
-        _d_ult_cell(parts, i, 0, ry, r, ult_imgs)
-    ry += _S_UCH
-    for i, r in enumerate(ult_r2):
-        _d_ult_cell(parts, i, 1, ry, r, ult_imgs)
-    ry += _S_UCH
-    _d_frax_row(parts, ry, frax_rows, frax_icon, town_imgs)
-    y += ult_sec_h + _S_GAP
-
-    _d_section_header(parts, y, "Faction winrate")
-    y += _S_HDR_H
-    _d_section_bg(parts, y, _S_FC_H)
-    _d_faction_fc_grid(parts, y, faction_rows, fc_data, town_imgs, cls_imgs)
-    y += _S_FC_H + _S_GAP
-
-    _d_section_header(parts, y, "Class winrate")
-    y += _S_HDR_H
-    _d_section_bg(parts, y, _S_CCH)
+    canvas.section_header("Class winrate")
+    canvas.section_bg(_S_CCH)
     for i, r in enumerate(class_rows):
-        _d_class_cell(parts, i, y, r, cls_imgs)
+        canvas.class_cell(i, r)
 
-    parts.append("</svg>")
-    return _save("".join(parts), out_path, scale)
+    canvas.write("</svg>")
+    return _save(canvas.render(), out_path, scale)
 
 
 async def render_stats_card_async(ult_rows, faction_rows, class_rows, frax_rows,
