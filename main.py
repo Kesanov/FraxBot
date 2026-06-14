@@ -286,8 +286,12 @@ class PickerView(discord.ui.View):
                   "ultimate": g.ultimates["winner"], "elo": res["winner_elo"]}
         loser = {"name": g.loser.display_name, "faction": g.factions["loser"],
                  "ultimate": g.ultimates["loser"], "elo": res["loser_elo"]}
+        log.info("render new game card: %s vs %s (interaction %s)",
+                 g.winner.display_name, g.loser.display_name, interaction.id)
         path = await renderer.render_result_async(
             winner, loser, res["delta"], out, winner_avatar=w_av, loser_avatar=l_av)
+        log.info("render new game card done: %s vs %s (interaction %s)",
+                 g.winner.display_name, g.loser.display_name, interaction.id)
 
         if config.TEST_MODE:
             content = (f"🧪 [TEST] **{g.winner.display_name}** defeated "
@@ -382,19 +386,32 @@ def _top16_ids() -> set:
 async def confirm_game(game: PendingGame):
     if game.done:
         return
+    # Flag done only after the match is safely recorded — if record_match
+    # raises we leave the game pending so the confirm can be retried instead
+    # of silently losing the result.
+    w, l = game.winner, game.loser
+    try:
+        before = _top16_ids()
+        wf, wc = _split_faction_class(game.factions["winner"])
+        lf, lc = _split_faction_class(game.factions["loser"])
+        db.record_match(
+            w.id, l.id,
+            wf, wc, game.ultimates["winner"],
+            lf, lc, game.ultimates["loser"],
+        )
+        after = _top16_ids()
+    except Exception:
+        log.exception("record_match failed for %s vs %s", w.display_name, l.display_name)
+        try:
+            await game.message.reply(
+                "⚠️ Something went wrong recording this match. "
+                f"Please try confirming again with {CONFIRM_EMOJI}.")
+        except discord.HTTPException:
+            pass
+        return
     game.done = True
     if game.timeout_task:
         game.timeout_task.cancel()
-    w, l = game.winner, game.loser
-    before = _top16_ids()
-    wf, wc = _split_faction_class(game.factions["winner"])
-    lf, lc = _split_faction_class(game.factions["loser"])
-    db.record_match(
-        w.id, l.id,
-        wf, wc, game.ultimates["winner"],
-        lf, lc, game.ultimates["loser"],
-    )
-    after = _top16_ids()
     PENDING.pop(game.message.id, None)
     try:
         await game.message.edit(
@@ -535,11 +552,13 @@ async def publish_leaderboard():
     if channel is None:
         return
     async with _leaderboard_lock:
+        log.info("render leaderboard update")
         paths = await build_leaderboard_images("auto")
         # remove the bot's previous leaderboard messages so order stays correct
         await _purge_bot_messages(channel, limit=30)
         await _post_files(channel, paths)
         _cleanup(paths)
+        log.info("render leaderboard update done")
 
 
 async def _render_stats_header(title: str) -> str:
@@ -562,6 +581,7 @@ async def publish_winrate_stats():
         return
 
     async with _stats_lock:
+        log.info("render stats update")
         ult_rows  = db.ultimate_stats()
         fac_rows  = db.faction_stats()
         cls_rows  = db.class_stats()
@@ -592,6 +612,7 @@ async def publish_winrate_stats():
 
         global _stats_published_at_count
         _stats_published_at_count = db.match_count()
+        log.info("render stats update done")
 
 
 async def _winrate_daily_loop():
@@ -633,6 +654,17 @@ async def elo_cmd(interaction, player: discord.Member):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+def _loop_exception_handler(loop, context):
+    """Surface exceptions from detached tasks (daily loop, expire/refresh tasks)
+    that would otherwise be swallowed as a buried 'never retrieved' message."""
+    exc = context.get("exception")
+    msg = context.get("message", "unhandled exception in event loop")
+    if exc is not None:
+        log.error("loop exception: %s", msg, exc_info=exc)
+    else:
+        log.error("loop exception: %s", msg)
+
+
 async def on_ready():
     db.init_db()
     mode = " [TEST MODE — no confirmation, test DB]" if config.TEST_MODE else ""
@@ -645,6 +677,8 @@ async def on_ready():
     if _initialized:
         return
     _initialized = True
+
+    asyncio.get_event_loop().set_exception_handler(_loop_exception_handler)
 
     # Register commands per-guild (instant) and clear the global scope so commands
     # don't show up twice (once global + once per guild).

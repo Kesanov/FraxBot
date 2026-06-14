@@ -52,6 +52,11 @@ def _conn():
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    # WAL lets readers and a writer coexist; busy_timeout makes a connection wait
+    # for a lock instead of raising 'database is locked' immediately, which matters
+    # once stats queries and match writes can overlap across threads.
+    con.execute("PRAGMA journal_mode = WAL")
+    con.execute("PRAGMA busy_timeout = 5000")
     try:
         yield con
         con.commit()
