@@ -17,6 +17,9 @@ Flow:
 
 import asyncio
 import base64
+import ctypes
+import ctypes.util
+import gc
 import hashlib
 import logging
 import os
@@ -44,6 +47,27 @@ log = logging.getLogger("fraxbot")
 
 CONFIRM_EMOJI = "👍"
 DENY_EMOJI = "👎"
+
+# libc.malloc_trim returns freed heap pages to the OS (glibc only). Rendering
+# leaves a large allocator high-water mark that CPython's gc alone won't release,
+# so we trim after each render batch. Resolved once; None on non-glibc platforms.
+try:
+    _libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
+    _malloc_trim = _libc.malloc_trim
+except (OSError, AttributeError):
+    _malloc_trim = None
+
+
+def _release_memory(tag: str):
+    """Collect garbage and hand freed heap pages back to the OS after a render
+    batch, so the render spike doesn't stay resident as a permanent RSS floor."""
+    gc.collect()
+    if _malloc_trim is not None:
+        try:
+            _malloc_trim(0)
+        except Exception:
+            pass
+    log.debug("released memory after %s", tag)
 
 
 def _split_faction_class(combined: str | None) -> tuple[str | None, str | None]:
@@ -558,6 +582,7 @@ async def publish_leaderboard():
         await _purge_bot_messages(channel, limit=30)
         await _post_files(channel, paths)
         _cleanup(paths)
+        _release_memory("leaderboard update")
         log.info("render leaderboard update done")
 
 
@@ -612,6 +637,7 @@ async def publish_winrate_stats():
 
         global _stats_published_at_count
         _stats_published_at_count = db.match_count()
+        _release_memory("stats update")
         log.info("render stats update done")
 
 
