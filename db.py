@@ -28,23 +28,20 @@ def _bucketed(rows):
 def _weighted(key, wins, losses):
     """Fold a bucket's per-version record into one (winrate%, total_wins, total_losses).
 
-    Recurrence over patches in ascending order, skipping patches with no games:
-        EffWr(p) = (G(p)*RawWr(p) + STAT_PRIOR*EffWr(p-1)) / (G(p) + STAT_PRIOR)
-    The earliest patch with games seeds EffWr with its raw winrate (no prior).
-    Reported games are the real total across all patches.
+    Blend patches in order: EffWr(p) = (W(p) + wt*EffWr(p-1)) / (G(p) + wt)
+    where wt = min(∑G(prev), STAT_PRIOR).
     """
     w_by, l_by = wins.get(key, {}), losses.get(key, {})
-    eff = None
+    eff = total_prev = 0
+
     for v in sorted(set(w_by) | set(l_by)):
         w, l = w_by.get(v, 0), l_by.get(v, 0)
-        g = w + l
-        if g == 0:
-            continue
-        raw = w / g
-        eff = raw if eff is None else (g * raw + STAT_PRIOR * eff) / (g + STAT_PRIOR)
-    tw, tl = sum(w_by.values()), sum(l_by.values())
-    winrate = round(100 * eff) if eff is not None else 0
-    return winrate, tw, tl
+        g, wt = w + l
+        wt = min(total_prev, STAT_PRIOR)
+        eff = (w + wt * eff) / (g + wt)
+        total_prev += g
+
+    return round(100 * eff), sum(w_by.values()), sum(l_by.values())
 
 
 @contextmanager

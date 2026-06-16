@@ -40,7 +40,7 @@ WINRATE_CHANNEL_ID = int(os.environ.get("WINRATE_CHANNEL_ID", "0"))
 # Bump this when a new balance patch ships. Stats fold older patches into the
 # current one via a fixed-size prior (see STAT_PRIOR): each patch's effective
 # winrate becomes a STAT_PRIOR-game prior for the next patch.
-VERSION = (4, 4, 8)
+VERSION = (4, 5, 0)
 STAT_PRIOR = 10  # virtual games the previous patch contributes to the next one
 
 # --- ELO -------------------------------------------------------------------
