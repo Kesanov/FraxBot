@@ -36,7 +36,7 @@ def _weighted(key, wins, losses):
 
     for v in sorted(set(w_by) | set(l_by)):
         w, l = w_by.get(v, 0), l_by.get(v, 0)
-        g, wt = w + l
+        g = w + l
         wt = min(total_prev, STAT_PRIOR)
         eff = (w + wt * eff) / (g + wt)
         total_prev += g
