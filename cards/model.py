@@ -52,11 +52,11 @@ def build_entries(players, avatar_resolver=None, name_resolver=None):
 
 
 def streak_label(streak: int) -> str:
-    """🔥 for a win streak, 🧊 for a losing streak, – for none or single-game."""
-    if streak >= 2:
+    """🔥 for a win streak, – otherwise"""
+    if streak >= 1:
         return f"🔥{streak}"
-    if streak <= -2:
-        return f"🧊{abs(streak)}"
+    # if streak <= -2:
+    #     return f"🧊{abs(streak)}"
     return "–"
 
 
