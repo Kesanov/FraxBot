@@ -702,7 +702,11 @@ def _grid_section(embed, emoji, label, cells):
     for c in range(3):
         # Pad missing cells with a zero-width space so columns stay aligned.
         col = [row[c] if c < len(row) else "​" for row in rows]
-        embed.add_field(name="​", value="\n".join(col), inline=True)
+        # First cell goes on the field-name line (otherwise wasted as blank). Markdown
+        # doesn't render in field names, so strip the bold markers; the remaining rows
+        # stay in the value as normal bold white text.
+        head = col[0].replace("**", "")
+        embed.add_field(name=head, value="\n".join(col[1:]) or "​", inline=True)
 
 
 async def player_cmd(interaction, player: discord.Member):
@@ -733,8 +737,9 @@ async def player_cmd(interaction, player: discord.Member):
     # paired fields share a row (3 inline fields per row in Discord)
     embed.add_field(name="📊 Elo (Max)", value=f"**{p['elo']} ({peak})**")
     embed.add_field(name="⚔️ Winrate", value=f"**{winrate}% ({games} Total)**")
-    # embed.add_field(name="🔥 Streak", value=model.streak_label(p["streak"]), inline=True)
-    embed.add_field(name="​", value="​", inline=False)  # spacer before Nemesis/Scapegoat
+    # Blank third column completes this row so Nemesis/Scapegoat wrap to the next row
+    # with a single row-gap (a full-width spacer field would show two blank lines).
+    embed.add_field(name="​", value="​")
 
     # Nemesis (most-played opponent you trail) and Scapegoat (most-played you lead).
     # Ranked by total games together, not winrate, so a single fluke game can't win.
