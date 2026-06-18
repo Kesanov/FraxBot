@@ -214,12 +214,8 @@ def player_breakdown(user_id):
 
     def _entry(key, name, wins, losses):
         g = wins + losses
-        # `score` is a confidence-adjusted winrate: shrink toward 50% by STAT_PRIOR
-        # phantom games so small samples don't top (or bottom) the rankings.
-        score = 100 * (wins + STAT_PRIOR / 2) / (g + STAT_PRIOR)
         return {key: name, "wins": wins, "losses": losses, "games": g,
-                "winrate": round(100 * wins / g) if g else 0,
-                "score": round(score, 1)}
+                "winrate": round(100 * wins / g) if g else 0}
 
     fac = _tally("faction")
     factions = [_entry("faction", f, *fac.get(f, (0, 0))) for f in FACTIONS]
