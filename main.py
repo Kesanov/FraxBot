@@ -697,7 +697,7 @@ def _grid_section(embed, emoji, label, cells):
     # Full-width banner header (blank field name + the title in the value). It spans
     # the whole card rather than sitting in a column, so all three columns stay equal
     # width, and being inline=False it forces the columns onto a fresh row.
-    banner = f"══ {emoji} **{label}** {emoji} ═══════════"
+    banner = f"**══ {label} ═══════════════**"
     embed.add_field(name="​", value=banner, inline=False)
     for c in range(3):
         # Pad missing cells with a zero-width space so columns stay aligned.
@@ -751,16 +751,23 @@ async def player_cmd(interaction, player: discord.Member):
 
     nemesis = next((r for r in h2h if r["losses"] > r["wins"]), None)
     scapegoat = next((r for r in h2h if r["wins"] > r["losses"]), None)
+    rivals = 0
     if nemesis:
         embed.add_field(
             name="😈 Nemesis",
             value=f"**{_opp_name(nemesis['opponent_id'])} "
                   f"({nemesis['wins']}:{nemesis['losses']})**", inline=True)
+        rivals += 1
     if scapegoat:
         embed.add_field(
             name="🐑 Scapegoat",
             value=f"**{_opp_name(scapegoat['opponent_id'])} "
                   f"({scapegoat['wins']}:{scapegoat['losses']})**", inline=True)
+        rivals += 1
+    # Pad the rivals row to 3 columns so the two values pack into thirds instead of
+    # splitting the full width with a big gap between them.
+    for _ in range((3 - rivals) % 3):
+        embed.add_field(name="​", value="​")
 
     # Guild custom emojis by name, used for ultimate (and class) icons.
     emoji_by_name = {e.name: str(e) for e in (interaction.guild.emojis if interaction.guild else [])}
