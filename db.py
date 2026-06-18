@@ -3,7 +3,7 @@
 import sqlite3
 from contextlib import contextmanager
 
-from config import DB_PATH, ELO_START, FACTIONS, CLASSES, VERSION, STAT_PRIOR
+from config import DB_PATH, ELO_START, FACTIONS, CLASSES, ULTIMATES, VERSION, STAT_PRIOR
 import elo
 
 VERSION_STR = ".".join(str(p) for p in VERSION)
@@ -221,7 +221,7 @@ def player_breakdown(user_id):
     factions = [_entry("faction", f, *fac.get(f, (0, 0))) for f in FACTIONS]
 
     ult = _tally("ultimate")
-    ultimates = [_entry("ultimate", u, w, l) for u, (w, l) in ult.items()]
+    ultimates = [_entry("ultimate", u, *ult.get(u, (0, 0))) for u in ULTIMATES]
     ultimates.sort(key=lambda r: r["games"], reverse=True)
 
     cls = _tally("class")

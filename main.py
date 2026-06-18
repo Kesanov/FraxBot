@@ -673,16 +673,9 @@ CLASS_ULTIMATE = {
 }
 
 
-def _wl(r, italic=False):
-    """'W:L', always bold; also italic when flagged (a table's top winrates)."""
-    s = f"{r['wins']}:{r['losses']}"
-    return f"***{s}***" if italic else f"**{s}**"
-
-
-def _top3_winrate(records):
-    """ids of the 3 highest-winrate records in a table (for italic emphasis)."""
-    return {id(r) for r in sorted(records, key=lambda r: r["winrate"],
-                                  reverse=True)[:3]}
+def _wl(r):
+    """Bold 'W:L', or '-' when the player has no games with this pick."""
+    return f"**{r['wins']}:{r['losses']}**" if r["games"] else "-"
 
 
 def _grid_section(embed, title, cells):
@@ -692,8 +685,7 @@ def _grid_section(embed, title, cells):
     three columns side by side; cells fill left-to-right, top-to-bottom.
     """
     if not cells:
-        embed.add_field(name=title, value="—", inline=False)
-        return
+        cells = ["—"]
     rows = [cells[i:i + 3] for i in range(0, len(cells), 3)]
     # Spread an incomplete final row symmetrically: one cell centered, two on the
     # outer edges, so the table never looks left-heavy.
@@ -702,14 +694,14 @@ def _grid_section(embed, title, cells):
         rows[-1] = ["​", last[0], "​"]
     elif len(last) == 2:
         rows[-1] = [last[0], "​", last[1]]
-    embed.add_field(name="​", value="​", inline=False)  # blank row above the section
-    # The title rides on the first column's field name, so the table starts right
-    # under it with no empty row below (a standalone header field would add one).
+    # Title is column 0's field name (proper header styling); each column's value is
+    # its cells starting immediately. The field-name header separates sections, so
+    # there are no spacer/underline lines and no blank rows.
     for c in range(3):
         # Pad missing cells with a zero-width space so columns stay aligned.
         col = [row[c] if c < len(row) else "​" for row in rows]
         embed.add_field(name=(title if c == 0 else "​"),
-                        value="\n".join(col), inline=True)
+                        value="\n".join(col) + "\n​", inline=True)
 
 
 async def player_cmd(interaction, player: discord.Member):
@@ -725,21 +717,21 @@ async def player_cmd(interaction, player: discord.Member):
     lb_rank = db.leaderboard_rank(player.id)[0]
     peak = p["peak_elo"]
 
-    # Factions the player has used, most-played first.
-    used_factions = sorted((r for r in bd["factions"] if r["games"]),
-                           key=lambda r: r["games"], reverse=True)
+    # All factions, most-played first (unplayed ones fall to the end with '-').
+    all_factions = sorted(bd["factions"], key=lambda r: r["games"], reverse=True)
 
     # Color the card by the player's most-played faction (fallback gold).
-    color = (discord.Color.from_str(config.FACTION_COLORS[used_factions[0]["faction"]])
-             if used_factions else discord.Color.gold())
+    top_faction = all_factions[0] if all_factions and all_factions[0]["games"] else None
+    color = (discord.Color.from_str(config.FACTION_COLORS[top_faction["faction"]])
+             if top_faction else discord.Color.gold())
 
     embed = discord.Embed(color=color)
     embed.set_author(name=f"{player.display_name}  (Rank #{lb_rank} 🏆)",
                      icon_url=player.display_avatar.url)
     embed.set_thumbnail(url=player.display_avatar.url)
     # paired fields share a row (3 inline fields per row in Discord)
-    embed.add_field(name="📊 Elo (Max)", value=f"**{p['elo']}** ({peak})")
-    embed.add_field(name="⚔️ Winrate", value=f"{winrate}% ({games} Total)")
+    embed.add_field(name="📊 Elo (Max)", value=f"**{p['elo']} ({peak})**")
+    embed.add_field(name="⚔️ Winrate", value=f"**{winrate}% ({games} Total)**")
     # embed.add_field(name="🔥 Streak", value=model.streak_label(p["streak"]), inline=True)
     embed.add_field(name="​", value="​", inline=False)  # spacer before Nemesis/Scapegoat
 
@@ -756,21 +748,20 @@ async def player_cmd(interaction, player: discord.Member):
     if nemesis:
         embed.add_field(
             name="😈 Nemesis",
-            value=f"{_opp_name(nemesis['opponent_id'])} "
-                  f"({nemesis['wins']}:{nemesis['losses']})", inline=True)
+            value=f"**{_opp_name(nemesis['opponent_id'])} "
+                  f"({nemesis['wins']}:{nemesis['losses']})**\n​", inline=True)
     if scapegoat:
         embed.add_field(
             name="🐑 Scapegoat",
-            value=f"{_opp_name(scapegoat['opponent_id'])} "
-                  f"({scapegoat['wins']}:{scapegoat['losses']})", inline=True)
+            value=f"**{_opp_name(scapegoat['opponent_id'])} "
+                  f"({scapegoat['wins']}:{scapegoat['losses']})**\n​", inline=True)
 
     # Guild custom emojis by name, used for ultimate (and class) icons.
     emoji_by_name = {e.name: str(e) for e in (interaction.guild.emojis if interaction.guild else [])}
 
-    # Factions: emoji + W:L, most-played first. Italic on the table's top winrates.
-    fac_top = _top3_winrate(used_factions)
-    fac_cells = [f"{config.FACTION_EMOJI.get(r['faction'], '')} {_wl(r, id(r) in fac_top)}"
-                 for r in used_factions]
+    # Factions: emoji + W:L, most-played first.
+    fac_cells = [f"{config.FACTION_EMOJI.get(r['faction'], '')} {_wl(r)}"
+                 for r in all_factions]
     _grid_section(embed, "🏰 Factions", fac_cells)
 
     # Ultimates: every one played, sorted by pickrate (games desc). Emoji only,
@@ -778,10 +769,8 @@ async def player_cmd(interaction, player: discord.Member):
     def _ult_label(name):
         return emoji_by_name.get(config.ultimate_emoji_name(name)) or name
 
-    ult_recs = [r for r in bd["ultimates"] if r["games"]]
-    ult_top = _top3_winrate(ult_recs)
-    ult_cells = [f"{_ult_label(r['ultimate'])} {_wl(r, id(r) in ult_top)}"
-                 for r in ult_recs]
+    ult_cells = [f"{_ult_label(r['ultimate'])} {_wl(r)}"
+                 for r in bd["ultimates"]]
     _grid_section(embed, "✨ Ultimates", ult_cells)
 
     # Classes: shown with their representative ultimate's emoji.
@@ -789,10 +778,8 @@ async def player_cmd(interaction, player: discord.Member):
         return (emoji_by_name.get(config.ultimate_emoji_name(CLASS_ULTIMATE[cls]))
                 or config.CLASS_EMOJI.get(cls, cls))
 
-    cls_recs = [r for r in bd["classes"] if r["games"]]
-    cls_top = _top3_winrate(cls_recs)
-    cls_cells = [f"{_cls_label(r['class'])} {_wl(r, id(r) in cls_top)}"
-                 for r in cls_recs]
+    cls_cells = [f"{_cls_label(r['class'])} {_wl(r)}"
+                 for r in bd["classes"]]
     _grid_section(embed, "⚔️ Classes", cls_cells)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
