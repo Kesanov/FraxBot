@@ -755,14 +755,14 @@ async def player_cmd(interaction, player: discord.Member):
     if nemesis:
         embed.add_field(
             name="😈 Nemesis",
-            value=f"**{_opp_name(nemesis['opponent_id'])} "
-                  f"({nemesis['wins']}:{nemesis['losses']})**", inline=True)
+            value=f"({nemesis['wins']}:{nemesis['losses']})**"
+                  f"**{_opp_name(nemesis['opponent_id'])} ", inline=True)
         rivals += 1
     if scapegoat:
         embed.add_field(
             name="🐑 Scapegoat",
-            value=f"**{_opp_name(scapegoat['opponent_id'])} "
-                  f"({scapegoat['wins']}:{scapegoat['losses']})**", inline=True)
+            value=f"({scapegoat['wins']}:{scapegoat['losses']})**"
+                  f"**{_opp_name(scapegoat['opponent_id'])} ", inline=True)
         rivals += 1
     # Pad the rivals row to 3 columns so the two values pack into thirds instead of
     # splitting the full width with a big gap between them.
