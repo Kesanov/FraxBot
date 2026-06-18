@@ -674,12 +674,12 @@ CLASS_ULTIMATE = {
 
 
 def _wl(r):
-    """Bold 'W:L', or '-' when the player has no games with this pick."""
-    return f"**{r['wins']}:{r['losses']}**" if r["games"] else "-"
+    """Bold 'W:L', or blank when the player has no games with this pick."""
+    return f"**{r['wins']}:{r['losses']}**" if r["games"] else ""
 
 
-def _grid_section(embed, title, cells):
-    """Render preformatted `cells` as a 3-column table using inline fields.
+def _grid_section(embed, emoji, label, cells):
+    """Render preformatted `cells` as a 3-column table under a banner header.
 
     Each column is its own inline field (a vertical list), so Discord aligns the
     three columns side by side; cells fill left-to-right, top-to-bottom.
@@ -694,14 +694,15 @@ def _grid_section(embed, title, cells):
         rows[-1] = ["​", last[0], "​"]
     elif len(last) == 2:
         rows[-1] = [last[0], "​", last[1]]
-    # Title is column 0's field name (proper header styling); each column's value is
-    # its cells starting immediately. The field-name header separates sections, so
-    # there are no spacer/underline lines and no blank rows.
+    # Full-width banner header (blank field name + the title in the value). It spans
+    # the whole card rather than sitting in a column, so all three columns stay equal
+    # width, and being inline=False it forces the columns onto a fresh row.
+    banner = f"══ {emoji} **{label}** {emoji} ═══════════"
+    embed.add_field(name="​", value=banner, inline=False)
     for c in range(3):
         # Pad missing cells with a zero-width space so columns stay aligned.
         col = [row[c] if c < len(row) else "​" for row in rows]
-        embed.add_field(name=(title if c == 0 else "​"),
-                        value="\n".join(col) + "\n​", inline=True)
+        embed.add_field(name="​", value="\n".join(col), inline=True)
 
 
 async def player_cmd(interaction, player: discord.Member):
@@ -749,12 +750,12 @@ async def player_cmd(interaction, player: discord.Member):
         embed.add_field(
             name="😈 Nemesis",
             value=f"**{_opp_name(nemesis['opponent_id'])} "
-                  f"({nemesis['wins']}:{nemesis['losses']})**\n​", inline=True)
+                  f"({nemesis['wins']}:{nemesis['losses']})**", inline=True)
     if scapegoat:
         embed.add_field(
             name="🐑 Scapegoat",
             value=f"**{_opp_name(scapegoat['opponent_id'])} "
-                  f"({scapegoat['wins']}:{scapegoat['losses']})**\n​", inline=True)
+                  f"({scapegoat['wins']}:{scapegoat['losses']})**", inline=True)
 
     # Guild custom emojis by name, used for ultimate (and class) icons.
     emoji_by_name = {e.name: str(e) for e in (interaction.guild.emojis if interaction.guild else [])}
@@ -762,7 +763,7 @@ async def player_cmd(interaction, player: discord.Member):
     # Factions: emoji + W:L, most-played first.
     fac_cells = [f"{config.FACTION_EMOJI.get(r['faction'], '')} {_wl(r)}"
                  for r in all_factions]
-    _grid_section(embed, "🏰 Factions", fac_cells)
+    _grid_section(embed, "🏰", "Factions", fac_cells)
 
     # Ultimates: every one played, sorted by pickrate (games desc). Emoji only,
     # falling back to the name if the guild has no matching custom emoji.
@@ -771,7 +772,7 @@ async def player_cmd(interaction, player: discord.Member):
 
     ult_cells = [f"{_ult_label(r['ultimate'])} {_wl(r)}"
                  for r in bd["ultimates"]]
-    _grid_section(embed, "✨ Ultimates", ult_cells)
+    _grid_section(embed, "✨", "Ultimates", ult_cells)
 
     # Classes: shown with their representative ultimate's emoji.
     def _cls_label(cls):
@@ -780,7 +781,7 @@ async def player_cmd(interaction, player: discord.Member):
 
     cls_cells = [f"{_cls_label(r['class'])} {_wl(r)}"
                  for r in bd["classes"]]
-    _grid_section(embed, "⚔️ Classes", cls_cells)
+    _grid_section(embed, "⚔️", "Classes", cls_cells)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
