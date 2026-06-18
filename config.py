@@ -81,7 +81,7 @@ CLASS_EMOJI = {
 FACTION_EMOJI = {
     "Haven":       "⛪",
     "Sylvan":      "🌿",
-    "Academy":     "⚡",
+    "Academy":     "🌩️",
     "Dungeon":     "🦇",
     "Necropolis":  "💀",
     "Inferno":     "🔥",
