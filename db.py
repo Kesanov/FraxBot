@@ -80,7 +80,8 @@ def init_db():
                 elo       INTEGER NOT NULL,
                 wins      INTEGER NOT NULL DEFAULT 0,
                 losses    INTEGER NOT NULL DEFAULT 0,
-                streak    INTEGER NOT NULL DEFAULT 0
+                streak    INTEGER NOT NULL DEFAULT 0,
+                peak_elo  INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS matches (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,12 +109,38 @@ def init_db():
         con.execute(
             "UPDATE matches SET version=? WHERE version IS NULL", (VERSION_STR,)
         )
+        # Migrate older DBs that predate peak_elo, then backfill peaks by replaying
+        # match history (winner +delta, loser -delta from ELO_START).
+        if "peak_elo" not in {r["name"] for r in con.execute("PRAGMA table_info(players)")}:
+            con.execute("ALTER TABLE players ADD COLUMN peak_elo INTEGER NOT NULL DEFAULT 0")
+        if con.execute("SELECT COUNT(*) FROM players WHERE peak_elo=0").fetchone()[0]:
+            _backfill_peaks(con)
+
+
+def _backfill_peaks(con):
+    """Replay all matches in order to set each player's all-time ELO peak."""
+    cur = {}   # user_id -> running elo
+    peak = {}  # user_id -> max elo seen
+    for w, l, d in con.execute(
+        "SELECT winner_id, loser_id, delta FROM matches ORDER BY id"
+    ):
+        for uid in (w, l):
+            if uid not in cur:
+                cur[uid] = peak[uid] = ELO_START
+        cur[w] += d
+        cur[l] -= d
+        peak[w] = max(peak[w], cur[w])
+        peak[l] = max(peak[l], cur[l])
+    for uid, elo_val in con.execute("SELECT user_id, elo FROM players").fetchall():
+        con.execute("UPDATE players SET peak_elo=? WHERE user_id=?",
+                    (max(peak.get(uid, elo_val), elo_val), uid))
 
 
 def _ensure_player(con, user_id: str):
     row = con.execute("SELECT elo, streak FROM players WHERE user_id=?", (user_id,)).fetchone()
     if row is None:
-        con.execute("INSERT INTO players (user_id, elo) VALUES (?,?)", (user_id, ELO_START))
+        con.execute("INSERT INTO players (user_id, elo, peak_elo) VALUES (?,?,?)",
+                    (user_id, ELO_START, ELO_START))
         return ELO_START, 0
     return row["elo"], row["streak"]
 
@@ -126,12 +153,14 @@ def record_match(winner_id, loser_id, w_faction, w_class, w_ult, l_faction, l_cl
         l_elo, l_streak = _ensure_player(con, l_id)
         new_w, new_l, delta = elo.update_ratings(w_elo, l_elo)
         con.execute(
-            "UPDATE players SET elo=?, wins=wins+1, streak=? WHERE user_id=?",
-            (new_w, w_streak + 1 if w_streak > 0 else 1, w_id),
+            "UPDATE players SET elo=?, wins=wins+1, streak=?, peak_elo=MAX(peak_elo,?) "
+            "WHERE user_id=?",
+            (new_w, w_streak + 1 if w_streak > 0 else 1, new_w, w_id),
         )
         con.execute(
-            "UPDATE players SET elo=?, losses=losses+1, streak=? WHERE user_id=?",
-            (new_l, l_streak - 1 if l_streak < 0 else -1, l_id),
+            "UPDATE players SET elo=?, losses=losses+1, streak=?, peak_elo=MAX(peak_elo,?) "
+            "WHERE user_id=?",
+            (new_l, l_streak - 1 if l_streak < 0 else -1, new_l, l_id),
         )
         con.execute(
             """INSERT INTO matches
@@ -156,6 +185,77 @@ def get_player(user_id):
     return dict(row) if row else None
 
 
+def player_breakdown(user_id):
+    """Per-player record split by faction, ultimate and class.
+
+    Raw counts (no version weighting / mirror exclusion): every game the player
+    played counts for whatever they picked. Returns:
+        {"factions": [...FACTIONS order...],
+         "ultimates": [...sorted by games desc...],
+         "classes":  [...CLASSES order...]}
+    each entry a dict with wins/losses/games/winrate (+ name key).
+    """
+    uid = str(user_id)
+
+    def _tally(col):
+        """{value: [wins, losses]} for the player's matches grouped by `col`."""
+        out = {}
+        with _conn() as con:
+            for val, w in con.execute(
+                f"SELECT winner_{col}, 1 FROM matches WHERE winner_id=? "
+                f"UNION ALL SELECT loser_{col}, 0 FROM matches WHERE loser_id=?",
+                (uid, uid),
+            ):
+                if val is None:
+                    continue
+                rec = out.setdefault(val, [0, 0])
+                rec[0 if w else 1] += 1
+        return out
+
+    def _entry(key, name, wins, losses):
+        g = wins + losses
+        # `score` is a confidence-adjusted winrate: shrink toward 50% by STAT_PRIOR
+        # phantom games so small samples don't top (or bottom) the rankings.
+        score = 100 * (wins + STAT_PRIOR / 2) / (g + STAT_PRIOR)
+        return {key: name, "wins": wins, "losses": losses, "games": g,
+                "winrate": round(100 * wins / g) if g else 0,
+                "score": round(score, 1)}
+
+    fac = _tally("faction")
+    factions = [_entry("faction", f, *fac.get(f, (0, 0))) for f in FACTIONS]
+
+    ult = _tally("ultimate")
+    ultimates = [_entry("ultimate", u, w, l) for u, (w, l) in ult.items()]
+    ultimates.sort(key=lambda r: r["games"], reverse=True)
+
+    cls = _tally("class")
+    classes = [_entry("class", c, *cls.get(i, (0, 0)))
+               for i, c in enumerate(CLASSES)]
+
+    return {"factions": factions, "ultimates": ultimates, "classes": classes}
+
+
+def head_to_head(user_id):
+    """Per-opponent record for a player: [{opponent_id, wins, losses, games}], games desc.
+
+    `wins` = times this player beat that opponent; `losses` = times they lost to them.
+    """
+    uid = str(user_id)
+    rec = {}  # opponent_id -> [wins, losses]
+    with _conn() as con:
+        for opp, w in con.execute(
+            "SELECT loser_id, 1 FROM matches WHERE winner_id=? "
+            "UNION ALL SELECT winner_id, 0 FROM matches WHERE loser_id=?",
+            (uid, uid),
+        ):
+            r = rec.setdefault(opp, [0, 0])
+            r[0 if w else 1] += 1
+    out = [{"opponent_id": opp, "wins": w, "losses": l, "games": w + l}
+           for opp, (w, l) in rec.items()]
+    out.sort(key=lambda r: r["games"], reverse=True)
+    return out
+
+
 def preview_match(winner_id, loser_id):
     """Compute the projected ELO outcome without writing anything."""
     wp = get_player(winner_id)
@@ -164,6 +264,20 @@ def preview_match(winner_id, loser_id):
     l_elo = lp["elo"] if lp else ELO_START
     new_w, new_l, delta = elo.update_ratings(w_elo, l_elo)
     return {"winner_elo": new_w, "loser_elo": new_l, "delta": delta}
+
+
+def leaderboard_rank(user_id):
+    """Return (rank, total) by ELO standing (1-based), or (None, total) if absent."""
+    uid = str(user_id)
+    with _conn() as con:
+        total = con.execute("SELECT COUNT(*) FROM players").fetchone()[0]
+        row = con.execute("SELECT elo FROM players WHERE user_id=?", (uid,)).fetchone()
+        if row is None:
+            return None, total
+        ahead = con.execute(
+            "SELECT COUNT(*) FROM players WHERE elo > ?", (row["elo"],)
+        ).fetchone()[0]
+    return ahead + 1, total
 
 
 def top_players(limit: int = 10):

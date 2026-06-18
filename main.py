@@ -93,8 +93,8 @@ def _make_client():
     tree.command(name="defeated", description="Report that you defeated another player.")(
         app_commands.describe(enemy="The player you defeated")(defeated)
     )
-    tree.command(name="elo", description="Show a player's ELO, winrate and games.")(
-        app_commands.describe(player="The player to look up")(elo_cmd)
+    tree.command(name="player", description="Show a player's stats by faction, ultimate and class.")(
+        app_commands.describe(player="The player to look up")(player_cmd)
     )
 
 
@@ -248,7 +248,13 @@ class UltimateSelect(discord.ui.Select):
         self._pview = view
         self.side = side
         player = view.game.winner if side == "winner" else view.game.loser
-        options = [discord.SelectOption(label=u, value=u) for u in config.ULTIMATES]
+        emoji_by_name = view.emoji_by_name
+        options = [
+            discord.SelectOption(
+                label=u, value=u,
+                emoji=emoji_by_name.get(config.ultimate_emoji_name(u)))
+            for u in config.ULTIMATES
+        ]
         super().__init__(placeholder=f"{player.display_name}: Ultimate",
                          options=options, row=row)
 
@@ -270,9 +276,11 @@ class SubmitButton(discord.ui.Button):
 class PickerView(discord.ui.View):
     """Shown only to the reporter (ephemeral)."""
 
-    def __init__(self, game: PendingGame):
+    def __init__(self, game: PendingGame, guild=None):
         super().__init__(timeout=300)
         self.game = game
+        # custom emoji name -> Emoji, so selects can show server emojis for ultimates
+        self.emoji_by_name = {e.name: e for e in (guild.emojis if guild else [])}
         self.add_item(FactionSelect(self, "winner", row=0))
         self.add_item(UltimateSelect(self, "winner", row=1))
         self.add_item(FactionSelect(self, "loser", row=2))
@@ -460,7 +468,7 @@ async def defeated(interaction, enemy: discord.Member):
         return
 
     game = PendingGame(winner=interaction.user, loser=enemy)
-    view = PickerView(game)
+    view = PickerView(game, interaction.guild)
     await interaction.response.send_message(
         content=f"You vs **{enemy.display_name}** — pick faction & ultimate for both, "
                 f"then submit. {enemy.display_name} will confirm with {CONFIRM_EMOJI}.",
@@ -521,7 +529,7 @@ async def build_leaderboard_images(tag):
             chunk = players[i:i + 4]
             n = i // 4
             key = hashlib.md5(
-                str([(p["user_id"], p["elo"], p["wins"], p["losses"], p.get("streak", 0))
+                str([(p["user_id"], p["elo"], p["wins"], p["losses"], p["streak"])
                      for p in chunk]).encode()
             ).hexdigest()
             out = os.path.join(d, f"lb_chunk_{n}.webp")
@@ -657,7 +665,7 @@ async def _winrate_daily_loop():
             log.exception("daily stats refresh failed")
 
 
-async def elo_cmd(interaction, player: discord.Member):
+async def player_cmd(interaction, player: discord.Member):
     p = db.get_player(player.id)
     if p is None:
         await interaction.response.send_message(
@@ -666,17 +674,99 @@ async def elo_cmd(interaction, player: discord.Member):
         return
     games = p["wins"] + p["losses"]
     winrate = round(100 * p["wins"] / games) if games else 0
-    embed = discord.Embed(color=discord.Color.gold())
+    bd = db.player_breakdown(player.id)
+    lb_rank = db.leaderboard_rank(player.id)[0]
+    peak = p["peak_elo"]
+
+    # Factions the player has used, most-played first.
+    used_factions = sorted((r for r in bd["factions"] if r["games"]),
+                           key=lambda r: r["games"], reverse=True)
+
+    # Color the card by the player's most-played faction (fallback gold).
+    color = (discord.Color.from_str(config.FACTION_COLORS[used_factions[0]["faction"]])
+             if used_factions else discord.Color.gold())
+
+    embed = discord.Embed(color=color)
+    embed.set_author(name=player.display_name, icon_url=player.display_avatar.url)
+    embed.set_thumbnail(url=player.display_avatar.url)
     # paired fields share a row (3 inline fields per row in Discord)
-    embed.add_field(name="🏰 Player", value=player.display_name, inline=True)
-    embed.add_field(name="📊 ELO", value=f"**{p['elo']}**", inline=True)
-    embed.add_field(name="🎖️ Rank", value=config.rank_title(p["elo"]), inline=True)
-    embed.add_field(name="⚔️ Games", value=str(games), inline=True)
-    embed.add_field(name="📈 Winrate", value=f"{winrate}%", inline=True)
-    embed.add_field(name="🔥 Streak", value=model.streak_label(p.get("streak", 0)),
-                    inline=True)
-    embed.add_field(name="✅ Wins", value=str(p["wins"]), inline=True)
-    embed.add_field(name="❌ Losses", value=str(p["losses"]), inline=True)
+    elo_val = f"**{p['elo']}**" + (f" (Peak {peak})" if peak > p["elo"] else "")
+    embed.add_field(name="📊 ELO", value=elo_val)
+    embed.add_field(name="🏆 Rank", value=f"#{lb_rank}")
+    embed.add_field(name="⚔️ Winrate", value=f"{winrate}% ({games} Total)")
+    # embed.add_field(name="🔥 Streak", value=model.streak_label(p["streak"]), inline=True)
+
+    # Nemesis (most-played opponent you trail) and Scapegoat (most-played you lead).
+    # Ranked by total games together, not winrate, so a single fluke game can't win.
+    h2h = db.head_to_head(player.id)
+
+    def _opp_name(oid):
+        m = interaction.guild.get_member(int(oid)) if interaction.guild else None
+        return m.display_name if m else f"<@{oid}>"
+
+    nemesis = next((r for r in h2h if r["losses"] > r["wins"]), None)
+    scapegoat = next((r for r in h2h if r["wins"] > r["losses"]), None)
+    if nemesis:
+        embed.add_field(
+            name="😈 Nemesis",
+            value=f"{_opp_name(nemesis['opponent_id'])} "
+                  f"({nemesis['wins']}:{nemesis['losses']})", inline=True)
+    if scapegoat:
+        embed.add_field(
+            name="🐑 Scapegoat",
+            value=f"{_opp_name(scapegoat['opponent_id'])} "
+                  f"({scapegoat['wins']}:{scapegoat['losses']})", inline=True)
+
+    # Per-faction: games and winrate, most-played first.
+    fac_lines = [
+        f"{config.FACTION_EMOJI.get(r['faction'], '')} **{r['faction']}** — "
+        f"{r['games']}g · {r['winrate']}% WR"
+        for r in used_factions
+    ]
+    embed.add_field(name="🏰 Factions",
+                    value="\n".join(fac_lines) or "—", inline=False)
+
+    # Top 3 favorite ultimates by pickrate, with winrate. Prefix with the guild's
+    # custom emoji whose name matches the ultimate (spaces stripped), if present.
+    emoji_by_name = {e.name: str(e) for e in (interaction.guild.emojis if interaction.guild else [])}
+
+    def _ult_icon(name):
+        e = emoji_by_name.get(config.ultimate_emoji_name(name))
+        return f"{e} " if e else ""
+
+    top_ults = [r for r in bd["ultimates"] if r["games"]][:3]
+    ult_lines = [
+        f"{_ult_icon(r['ultimate'])}**{r['ultimate']}** — {r['games']}g "
+        f"({round(100 * r['games'] / games) if games else 0}% pick) · "
+        f"{r['winrate']}% WR"
+        for r in top_ults
+    ]
+    embed.add_field(name="✨ Top Ultimates",
+                    value="\n".join(ult_lines) or "—", inline=False)
+
+    # Worst 3 ultimates by confidence-adjusted winrate (small samples shrink to 50%).
+    played_ults = [r for r in bd["ultimates"] if r["games"]]
+    worst_ults = sorted(played_ults, key=lambda r: r["score"])[:3]
+    worst_lines = [
+        f"{_ult_icon(r['ultimate'])}**{r['ultimate']}** — {r['games']}g · "
+        f"{r['winrate']}% WR"
+        for r in worst_ults
+    ]
+    # Only show when there's more than one ultimate, else it just repeats Top.
+    if len(played_ults) > 1:
+        embed.add_field(name="💀 Worst Ultimates",
+                        value="\n".join(worst_lines) or "—", inline=False)
+
+    # Per-class: pickrate and winrate.
+    cls_lines = [
+        f"{config.CLASS_EMOJI.get(r['class'], '')} **{r['class']}** — "
+        f"{r['games']}g ({round(100 * r['games'] / games) if games else 0}% pick) · "
+        f"{r['winrate']}% WR"
+        for r in bd["classes"] if r["games"]
+    ]
+    embed.add_field(name="⚔️ Classes",
+                    value="\n".join(cls_lines) or "—", inline=False)
+
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 

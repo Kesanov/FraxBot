@@ -128,6 +128,15 @@ ULTIMATES = [
     "Blood Frenzy",
 ]
 
+def ultimate_emoji_name(ultimate: str) -> str:
+    """Custom-emoji name for an ultimate: the name with spaces/punctuation stripped.
+
+    e.g. "Frax Essence" -> "FraxEssence", "Nature's Luck" -> "NaturesLuck".
+    Used to look the emoji up by name in the guild at render time.
+    """
+    return "".join(c for c in ultimate if c.isalnum())
+
+
 # Theme colors keyed by faction (used by both renderers).
 FACTION_COLORS = {
     "Haven":      "#edc452",
