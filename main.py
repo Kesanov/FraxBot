@@ -749,25 +749,20 @@ async def player_cmd(interaction, player: discord.Member):
         m = interaction.guild.get_member(int(oid)) if interaction.guild else None
         return m.display_name if m else f"<@{oid}>"
 
-    nemesis = next((r for r in h2h if r["losses"] > r["wins"]), None)
-    scapegoat = next((r for r in h2h if r["wins"] > r["losses"]), None)
-    rivals = 0
-    if nemesis:
-        embed.add_field(
-            name="😈 Nemesis",
-            value=f"({nemesis['wins']}:{nemesis['losses']})**"
-                  f"**{_opp_name(nemesis['opponent_id'])} ", inline=True)
-        rivals += 1
-    if scapegoat:
-        embed.add_field(
-            name="🐑 Scapegoat",
-            value=f"({scapegoat['wins']}:{scapegoat['losses']})**"
-                  f"**{_opp_name(scapegoat['opponent_id'])} ", inline=True)
-        rivals += 1
-    # Pad the rivals row to 3 columns so the two values pack into thirds instead of
-    # splitting the full width with a big gap between them.
-    for _ in range((3 - rivals) % 3):
-        embed.add_field(name="​", value="​")
+    # The opponent the player has lost to most / beaten most. A player in the table
+    # has played at least one game, so there is always at least one opponent.
+    nemesis = max(h2h, key=lambda r: r["losses"])
+    scapegoat = max(h2h, key=lambda r: r["wins"])
+    # Full-width (own line) so the variable-length opponent names stay out of the
+    # 3-column grid and can't affect the faction/ultimate/class column widths.
+    embed.add_field(
+        name="😈 Nemesis",
+        value=f"**({nemesis['wins']}:{nemesis['losses']})  **"
+              f"{_opp_name(nemesis['opponent_id'])} ", inline=False)
+    embed.add_field(
+        name="🐑 Scapegoat",
+        value=f"**({scapegoat['wins']}:{scapegoat['losses']})  **"
+              f"{_opp_name(scapegoat['opponent_id'])} ", inline=False)
 
     # Guild custom emojis by name, used for ultimate (and class) icons.
     emoji_by_name = {e.name: str(e) for e in (interaction.guild.emojis if interaction.guild else [])}
