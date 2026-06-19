@@ -222,11 +222,12 @@ class FactionSelect(discord.ui.Select):
         self._pview = view
         self.side = side  # "winner" or "loser"
         player = view.game.winner if side == "winner" else view.game.loser
+        emoji_by_name = view.emoji_by_name
         options = [
             discord.SelectOption(
-                label=f"{f}: {c}",
+                label=c,
                 value=f"{f}: {c}",
-                emoji=config.FACTION_EMOJI.get(f))
+                emoji=emoji_by_name.get(f))
             for f in config.FACTIONS
             for c in config.CLASSES
         ]

@@ -311,7 +311,7 @@ def render_reckoning(data, out_path, title="Reckoning", scale=1):
                              cy + round(ar_l * 0.7), l["col"]))
     lnx = acx_l - ar_l - 22
     parts.append(render_small_caps(lnx, cy - 18, "DEFEATED", 20, "#ff5b7a", anchor="end"))
-    parts.append(render_text(lnx, cy + 28, l["name"][:10], 30, GOLD, anchor="end"))
+    parts.append(render_text(lnx, cy + 28, l["name"][:8], 30, GOLD, anchor="end"))
 
     parts.append("</svg>")
     return _save("".join(parts), out_path, scale)
