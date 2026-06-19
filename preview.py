@@ -35,6 +35,22 @@ SAMPLE_PLAYERS = [
     {"user_id": "12", "name": "Freyda",    "elo": 855,  "wins": 3,  "losses": 17, "streak": 1},
 ]
 
+# Active players ranked below 12 (their true ladder positions), shown in the
+# 4th leaderboard card in rank order.
+SAMPLE_TAIL = [
+    {"user_id": "17", "name": "Deleb",   "elo": 820, "wins": 6, "losses": 19, "streak": -1, "position": 14},
+    {"user_id": "23", "name": "Ylaya",   "elo": 790, "wins": 4, "losses": 15, "streak": 2,  "position": 19},
+    {"user_id": "31", "name": "Zilonite","elo": 760, "wins": 3, "losses": 18, "streak": -5, "position": 24},
+    {"user_id": "44", "name": "Erling",  "elo": 740, "wins": 2, "losses": 14, "streak": 1,  "position": 28},
+]
+
+# Sample streak-slayer match for the Reckoning card.
+SAMPLE_RECKONING = {
+    "streak": 8, "delta": 31,
+    "winner": {"name": "中文", "faction": "Inferno", "avatar": None},
+    "loser":  {"name": "𝕲𝖗𝖞𝖜", "faction": "Haven",   "avatar": None},
+}
+
 SAMPLE_WINNER = {"name": "Kesanov", "faction": "Dungeon: Warlock",
                  "ultimate": "Frax Essence", "elo": 1420}
 SAMPLE_LOSER = {"name": "Valdris", "faction": "Haven: Warrior",
@@ -129,12 +145,30 @@ def _out(name):
 
 
 def render_leaderboard():
-    names = {p["user_id"]: p["name"] for p in SAMPLE_PLAYERS}
-    entries = model.build_entries(SAMPLE_PLAYERS, name_resolver=names.get)
+    names = {p["user_id"]: p["name"] for p in SAMPLE_PLAYERS + SAMPLE_TAIL}
     print("header   ->", renderer.render_header(_out("lb_header.jpg")))
+
+    # Reckoning card sits right under the header.
+    rk = model.build_reckoning(
+        {"streak": SAMPLE_RECKONING["streak"], "delta": SAMPLE_RECKONING["delta"],
+         "winner_id": "2", "loser_id": "1",
+         "winner_faction": SAMPLE_RECKONING["winner"]["faction"],
+         "loser_faction": SAMPLE_RECKONING["loser"]["faction"],
+         "winner_ultimate": "Blood Frenzy", "loser_ultimate": "Angelic Alliance"},
+        name_resolver=names.get)
+    print("reckoning->", renderer.render_reckoning(rk, _out("lb_reckoning.jpg")))
+
+    # Top 12 in three chunks of four.
+    top = SAMPLE_PLAYERS[:12]
+    entries = model.build_entries(top, name_resolver=names.get)
     for i in range(0, len(entries), 4):
         n = i // 4 + 1
         print(f"chunk{n}   ->", renderer.render_rows(entries[i:i + 4], _out(f"lb_chunk{n}.jpg")))
+
+    # 4th card: active players ranked below 12, in rank order.
+    tail_entries = model.build_entries(SAMPLE_TAIL, name_resolver=names.get)
+    print("tail     ->", renderer.render_rows(tail_entries, _out("lb_tail.jpg")))
+
     print("elo curve->", renderer.render_elo_curve(_out("elo_curve.jpg"), k=ELO_K))
 
 

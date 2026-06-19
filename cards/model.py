@@ -35,7 +35,9 @@ def build_entries(players, avatar_resolver=None, name_resolver=None):
             continue  # skip deleted accounts
         entries.append(
             {
-                "position": i,
+                # honor a precomputed ladder position (e.g. the active-tail card),
+                # otherwise fall back to the row's index in this list.
+                "position": p.get("position", i),
                 "name": _latinize(name),
                 "elo": p["elo"],
                 "rank": rank_title(p["elo"]),
@@ -49,6 +51,32 @@ def build_entries(players, avatar_resolver=None, name_resolver=None):
             }
         )
     return entries
+
+
+def build_reckoning(break_row, avatar_resolver=None, name_resolver=None):
+    """Shape a db.biggest_streak_break() row into render_reckoning() data, or
+    None when there's no streak-break to show.
+
+    Resolvers map user_id -> avatar / display name (name None ⇒ deleted account,
+    falls back to a mention so the card still renders).
+    """
+    if not break_row:
+        return None
+
+    def _side(prefix):
+        uid = break_row[f"{prefix}_id"]
+        name = (name_resolver(uid) if name_resolver else None) or f"<@{uid}>"
+        avatar = avatar_resolver(uid) if avatar_resolver else None
+        return {"name": name, "avatar": avatar,
+                "faction": break_row[f"{prefix}_faction"] or "",
+                "ultimate": break_row.get(f"{prefix}_ultimate") or ""}
+
+    return {
+        "streak": break_row["streak"],
+        "delta": break_row["delta"],
+        "winner": _side("winner"),
+        "loser": _side("loser"),
+    }
 
 
 def streak_label(streak: int) -> str:

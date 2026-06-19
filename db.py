@@ -284,6 +284,83 @@ def top_players(limit: int = 10):
     return [dict(r) for r in rows]
 
 
+def _last_played(con):
+    """{user_id: latest played_at} across every match the player appeared in."""
+    out = {}
+    for uid, ts in con.execute(
+        "SELECT user_id, MAX(ts) FROM ("
+        "  SELECT winner_id AS user_id, played_at AS ts FROM matches"
+        "  UNION ALL SELECT loser_id, played_at FROM matches"
+        ") GROUP BY user_id"
+    ):
+        out[uid] = ts
+    return out
+
+
+def active_tail(below_rank: int = 12, limit: int = 4):
+    """The `limit` most-recently-active players ranked below `below_rank`,
+    returned in rank order for display.
+
+    'Active' means the player has played at least one match; recency is the
+    latest played_at across their games. Each returned dict carries its true
+    leaderboard `position` (1-based) and `last_played`.
+    """
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT * FROM players ORDER BY elo DESC, wins DESC"
+        ).fetchall()
+        last = _last_played(con)
+    ranked = []
+    for i, r in enumerate(rows, start=1):
+        if i <= below_rank:
+            continue
+        ts = last.get(r["user_id"])
+        if ts is None:
+            continue  # never played → not active
+        d = dict(r)
+        d["position"] = i
+        d["last_played"] = ts
+        ranked.append(d)
+    # the `limit` most recently active, then back into rank order for the card
+    ranked.sort(key=lambda d: d["last_played"], reverse=True)
+    tail = ranked[:limit]
+    tail.sort(key=lambda d: d["position"])
+    return tail
+
+
+def biggest_streak_break(days: int = 7):
+    """The match in the last `days` that ended the biggest win streak.
+
+    Replays match history in order, tracking each player's running streak with
+    the same rule as record_match. A match "breaks" a streak when the loser
+    walked in on a positive win streak; among recent such matches we return the
+    one with the largest broken streak. Returns a dict with both players' picks,
+    the Elo delta and the broken `streak`, or None if no streak was broken.
+    """
+    from datetime import datetime, timedelta
+
+    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    with _conn() as con:
+        rows = con.execute("SELECT * FROM matches ORDER BY id").fetchall()
+    streaks = {}
+    best = None
+    for m in rows:
+        w, l = m["winner_id"], m["loser_id"]
+        l_streak = streaks.get(l, 0)
+        if (l_streak > 0 and m["played_at"] >= cutoff
+                and (best is None or l_streak > best["streak"])):
+            best = {
+                "winner_id": w, "loser_id": l,
+                "winner_faction": m["winner_faction"], "loser_faction": m["loser_faction"],
+                "winner_ultimate": m["winner_ultimate"], "loser_ultimate": m["loser_ultimate"],
+                "delta": m["delta"], "streak": l_streak, "played_at": m["played_at"],
+            }
+        w_s = streaks.get(w, 0)
+        streaks[w] = w_s + 1 if w_s > 0 else 1
+        streaks[l] = l_streak - 1 if l_streak < 0 else -1
+    return best
+
+
 def faction_stats():
     """Global per-faction record, mirrors excluded, sorted by winrate then games (desc)."""
     with _conn() as con:

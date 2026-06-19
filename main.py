@@ -34,6 +34,7 @@ from discord import app_commands
 import config
 import db
 from cards import model
+from cards.player import build_player_embed
 from cards import svg_renderer as renderer
 
 # Log to log.txt (and still echo to the console) so a crash leaves a trace.
@@ -69,12 +70,6 @@ def _release_memory(tag: str):
             pass
     log.debug("released memory after %s", tag)
 
-
-def _split_faction_class(combined: str | None) -> tuple[str | None, str | None]:
-    if combined and ": " in combined:
-        f, c = combined.split(": ", 1)
-        return f, c
-    return combined, None
 
 # Default (non-privileged) intents are enough: slash commands resolve Member
 # objects directly, reactions are in the default set, and avatars come via REST.
@@ -296,41 +291,19 @@ class PickerView(discord.ui.View):
         # close the ephemeral picker
         await interaction.response.edit_message(content="Submitted.", view=None)
 
-        # In test mode the match is recorded immediately (no confirmation).
+        # In test mode the match is recorded immediately (no confirmation); otherwise
+        # we only preview the Elo change until the enemy confirms with 👍.
         if config.TEST_MODE:
             before = _top16_ids()
-            wf, wc = _split_faction_class(g.factions["winner"])
-            lf, lc = _split_faction_class(g.factions["loser"])
-            res = db.record_match(
-                g.winner.id, g.loser.id,
-                wf, wc, g.ultimates["winner"],
-                lf, lc, g.ultimates["loser"])
+            res = _record_match(g)
             after = _top16_ids()
-        else:
-            res = db.preview_match(g.winner.id, g.loser.id)
-
-        # render the result card immediately, with avatars
-        async with aiohttp.ClientSession() as session:
-            w_av = await get_avatar(session, str(g.winner.id))
-            l_av = await get_avatar(session, str(g.loser.id))
-        out = os.path.join(config.PREVIEW_DIR, f"result_{interaction.id}.jpg")
-        winner = {"name": g.winner.display_name, "faction": g.factions["winner"],
-                  "ultimate": g.ultimates["winner"], "elo": res["winner_elo"]}
-        loser = {"name": g.loser.display_name, "faction": g.factions["loser"],
-                 "ultimate": g.ultimates["loser"], "elo": res["loser_elo"]}
-        log.info("render new game card: %s vs %s (interaction %s)",
-                 g.winner.display_name, g.loser.display_name, interaction.id)
-        path = await renderer.render_result_async(
-            winner, loser, res["delta"], out, winner_avatar=w_av, loser_avatar=l_av)
-        log.info("render new game card done: %s vs %s (interaction %s)",
-                 g.winner.display_name, g.loser.display_name, interaction.id)
-
-        if config.TEST_MODE:
             content = (f"🧪 [TEST] **{g.winner.display_name}** defeated "
                        f"**{g.loser.display_name}** — recorded immediately.")
         else:
-            content = (
-                f"{g.loser.mention} use {CONFIRM_EMOJI} to confirm within 24h")
+            res = db.preview_match(g.winner.id, g.loser.id)
+            content = f"{g.loser.mention} use {CONFIRM_EMOJI} to confirm within 24h"
+
+        path = await _render_result_card(g, res, interaction.id)
 
         channel = await _resolve_channel(config.REPORTS_CHANNEL_ID)
         if channel is None:
@@ -353,12 +326,7 @@ class PickerView(discord.ui.View):
         self.stop()
 
         if config.TEST_MODE:
-            players = {str(g.winner.id), str(g.loser.id)}
-            if not players.isdisjoint(before | after):
-                try:
-                    await publish_leaderboard()
-                except Exception:
-                    log.exception("leaderboard refresh failed")
+            await _refresh_leaderboard_if_affected(g.winner.id, g.loser.id, before, after)
             return
 
         g.message = msg
@@ -393,7 +361,7 @@ async def _expire_game(game: PendingGame):
         pass
     try:
         await game.message.edit(
-            content=f"❌ Failed to confirm in time — match not recorded.")
+            content="❌ Failed to confirm in time — match not recorded.")
     except discord.HTTPException:
         pass
 
@@ -415,6 +383,51 @@ def _top16_ids() -> set:
     return {p["user_id"] for p in db.top_players(16)}
 
 
+def _split_faction_class(combined):
+    """Split a stored 'Faction: Class' pick; class is None when there's no suffix."""
+    if combined and ": " in combined:
+        return tuple(combined.split(": ", 1))
+    return combined, None
+
+
+def _record_match(game: PendingGame):
+    """Persist a confirmed game, unpacking each side's 'Faction: Class' pick."""
+    wf, wc = _split_faction_class(game.factions["winner"])
+    lf, lc = _split_faction_class(game.factions["loser"])
+    return db.record_match(
+        game.winner.id, game.loser.id,
+        wf, wc, game.ultimates["winner"],
+        lf, lc, game.ultimates["loser"])
+
+
+async def _refresh_leaderboard_if_affected(winner_id, loser_id, before, after):
+    """Repost the ladder only when either player entered or left the top 16."""
+    if {str(winner_id), str(loser_id)} & (before | after):
+        try:
+            await publish_leaderboard()
+        except Exception:
+            log.exception("leaderboard refresh failed")
+
+
+async def _render_result_card(game: PendingGame, res, interaction_id) -> str:
+    """Render the winner-vs-loser result card (with avatars) and return its path."""
+    async with aiohttp.ClientSession() as session:
+        w_av = await get_avatar(session, str(game.winner.id))
+        l_av = await get_avatar(session, str(game.loser.id))
+    winner = {"name": game.winner.display_name, "faction": game.factions["winner"],
+              "ultimate": game.ultimates["winner"], "elo": res["winner_elo"]}
+    loser = {"name": game.loser.display_name, "faction": game.factions["loser"],
+             "ultimate": game.ultimates["loser"], "elo": res["loser_elo"]}
+    out = os.path.join(config.PREVIEW_DIR, f"result_{interaction_id}.jpg")
+    log.info("render new game card: %s vs %s (interaction %s)",
+             game.winner.display_name, game.loser.display_name, interaction_id)
+    path = await renderer.render_result_async(
+        winner, loser, res["delta"], out, winner_avatar=w_av, loser_avatar=l_av)
+    log.info("render new game card done: %s vs %s (interaction %s)",
+             game.winner.display_name, game.loser.display_name, interaction_id)
+    return path
+
+
 async def confirm_game(game: PendingGame):
     if game.done:
         return
@@ -424,13 +437,7 @@ async def confirm_game(game: PendingGame):
     w, l = game.winner, game.loser
     try:
         before = _top16_ids()
-        wf, wc = _split_faction_class(game.factions["winner"])
-        lf, lc = _split_faction_class(game.factions["loser"])
-        db.record_match(
-            w.id, l.id,
-            wf, wc, game.ultimates["winner"],
-            lf, lc, game.ultimates["loser"],
-        )
+        _record_match(game)
         after = _top16_ids()
     except Exception:
         log.exception("record_match failed for %s vs %s", w.display_name, l.display_name)
@@ -446,16 +453,10 @@ async def confirm_game(game: PendingGame):
         game.timeout_task.cancel()
     PENDING.pop(game.message.id, None)
     try:
-        await game.message.edit(
-            content=f"✅ The match has been confirmed.")
+        await game.message.edit(content="✅ The match has been confirmed.")
     except discord.HTTPException:
         pass
-    players = {str(w.id), str(l.id)}
-    if not players.isdisjoint(before | after):
-        try:
-            await publish_leaderboard()
-        except Exception:
-            log.exception("leaderboard refresh failed")
+    await _refresh_leaderboard_if_affected(w.id, l.id, before, after)
 
 
 async def defeated(interaction, enemy: discord.Member):
@@ -503,9 +504,10 @@ async def _prerender_header():
 
 async def build_leaderboard_images(tag):
     """Render the ladder as an ordered list of image paths:
-    [header, rows 1-4, rows 5-8, rows 9-12, rows 13-16, faction table].
-    Discord caps image height, so the rows are split into chunks of 4 and each
-    chunk is its own image (posted as separate stacked messages)."""
+    [header, reckoning, rows 1-4, rows 5-8, rows 9-12, active-tail].
+    Discord caps image height, so each section is its own stacked image. This
+    function only does IO (avatar/name resolution + render dispatch); the data
+    shaping lives in db/cards.model."""
     d = config.PREVIEW_DIR
     if _cached_header_path and os.path.exists(_cached_header_path):
         header_path = _cached_header_path
@@ -513,33 +515,53 @@ async def build_leaderboard_images(tag):
         header_path = await renderer.render_header_async(os.path.join(d, f"lb_{tag}_header.jpg"))
     paths = [header_path]
 
-    players = db.top_players(20)
-    if players:
-        async with aiohttp.ClientSession() as session:
-            avatars = {p["user_id"]: await get_avatar(session, p["user_id"])
-                       for p in players}
-        names = {p["user_id"]: await get_display_name(p["user_id"]) for p in players}
-        # exclude deleted accounts (name fetch returned None), cap at 16
-        players = [p for p in players if names.get(p["user_id"]) is not None][:16]
-        entries = model.build_entries(
-            players,
-            avatar_resolver=lambda uid: avatars.get(uid),
-            name_resolver=lambda uid: names.get(uid))
-        for i in range(0, len(entries), 4):
-            chunk = players[i:i + 4]
-            n = i // 4
-            key = hashlib.md5(
-                str([(p["user_id"], p["elo"], p["wins"], p["losses"], p["streak"])
-                     for p in chunk]).encode()
-            ).hexdigest()
-            out = os.path.join(d, f"lb_chunk_{n}.webp")
-            if _chunk_cache.get(n) == key and os.path.exists(out):
-                paths.append(out)
-                continue
-            path = await renderer.render_rows_async(entries[i:i + 4], out)
-            _chunk_cache[n] = key
-            paths.append(path)
-            await asyncio.sleep(0.3)
+    top = db.top_players(12)
+    tail = db.active_tail(below_rank=12, limit=4)
+    streak_break = db.biggest_streak_break(days=7)
+
+    # one batch of avatar/name lookups covers every player on the board
+    needed = {p["user_id"] for p in top + tail}
+    if streak_break:
+        needed |= {streak_break["winner_id"], streak_break["loser_id"]}
+    async with aiohttp.ClientSession() as session:
+        avatars = {uid: await get_avatar(session, uid) for uid in needed}
+    names = {uid: await get_display_name(uid) for uid in needed}
+    av = lambda uid: avatars.get(uid)
+    nm = lambda uid: names.get(uid)
+
+    # Reckoning card (streak slayer of the week), right under the header.
+    rk = model.build_reckoning(streak_break, avatar_resolver=av, name_resolver=nm)
+    if rk:
+        rk_path = await renderer.render_reckoning_async(
+            rk, os.path.join(d, "lb_reckoning.webp"))
+        paths.append(rk_path)
+
+    # Top 12 in chunks of 4 (deleted accounts dropped).
+    top = [p for p in top if names.get(p["user_id"]) is not None][:12]
+    entries = model.build_entries(top, avatar_resolver=av, name_resolver=nm)
+    for i in range(0, len(entries), 4):
+        chunk = top[i:i + 4]
+        n = i // 4
+        key = hashlib.md5(
+            str([(p["user_id"], p["elo"], p["wins"], p["losses"], p["streak"])
+                 for p in chunk]).encode()
+        ).hexdigest()
+        out = os.path.join(d, f"lb_chunk_{n}.webp")
+        if _chunk_cache.get(n) == key and os.path.exists(out):
+            paths.append(out)
+            continue
+        path = await renderer.render_rows_async(entries[i:i + 4], out)
+        _chunk_cache[n] = key
+        paths.append(path)
+        await asyncio.sleep(0.3)
+
+    # 4th card: the most-recently-active players ranked below 12, in rank order.
+    tail = [p for p in tail if names.get(p["user_id"]) is not None]
+    if tail:
+        tail_entries = model.build_entries(tail, avatar_resolver=av, name_resolver=nm)
+        path = await renderer.render_rows_async(
+            tail_entries, os.path.join(d, "lb_tail.webp"))
+        paths.append(path)
     return paths
 
 
@@ -665,131 +687,13 @@ async def _winrate_daily_loop():
             log.exception("daily stats refresh failed")
 
 
-# Classes are shown with a representative ultimate's emoji (no custom class emojis).
-CLASS_ULTIMATE = {
-    "Warrior": "Might over Magic",
-    "Warmage": "Arcane Omniscience",
-    "Warlock": "Master of Death",
-}
-
-
-def _wl(r):
-    """Bold 'W:L', or blank when the player has no games with this pick."""
-    return f"**{r['wins']}:{r['losses']}**" if r["games"] else ""
-
-
-def _grid_section(embed, emoji, label, cells):
-    """Render preformatted `cells` as a 3-column table under a banner header.
-
-    Each column is its own inline field (a vertical list), so Discord aligns the
-    three columns side by side; cells fill left-to-right, top-to-bottom.
-    """
-    if not cells:
-        cells = ["—"]
-    rows = [cells[i:i + 3] for i in range(0, len(cells), 3)]
-    # Spread an incomplete final row symmetrically: one cell centered, two on the
-    # outer edges, so the table never looks left-heavy.
-    last = rows[-1]
-    if len(last) == 1:
-        rows[-1] = ["​", last[0], "​"]
-    elif len(last) == 2:
-        rows[-1] = [last[0], "​", last[1]]
-    # Full-width banner header (blank field name + the title in the value). It spans
-    # the whole card rather than sitting in a column, so all three columns stay equal
-    # width, and being inline=False it forces the columns onto a fresh row.
-    banner = f"**══ {label} ═══════════════**"
-    embed.add_field(name="​", value=banner, inline=False)
-    for c in range(3):
-        # Pad missing cells with a zero-width space so columns stay aligned.
-        col = [row[c] if c < len(row) else "​" for row in rows]
-        # First cell goes on the field-name line (otherwise wasted as blank). Markdown
-        # doesn't render in field names, so strip the bold markers; the remaining rows
-        # stay in the value as normal bold white text.
-        head = col[0].replace("**", "")
-        embed.add_field(name=head, value="\n".join(col[1:]) or "​", inline=True)
-
-
 async def player_cmd(interaction, player: discord.Member):
-    p = db.get_player(player.id)
-    if p is None:
+    embed = await build_player_embed(interaction, player, get_display_name)
+    if embed is None:
         await interaction.response.send_message(
             f"🆕 **{player.display_name}** hasn't played any ranked games yet.",
             ephemeral=True)
         return
-    games = p["wins"] + p["losses"]
-    winrate = round(100 * p["wins"] / games) if games else 0
-    bd = db.player_breakdown(player.id)
-    lb_rank = db.leaderboard_rank(player.id)[0]
-    peak = p["peak_elo"]
-
-    # All factions, most-played first (unplayed ones fall to the end with '-').
-    all_factions = sorted(bd["factions"], key=lambda r: r["games"], reverse=True)
-
-    # Color the card by the player's most-played faction (fallback gold).
-    top_faction = all_factions[0] if all_factions and all_factions[0]["games"] else None
-    color = (discord.Color.from_str(config.FACTION_COLORS[top_faction["faction"]])
-             if top_faction else discord.Color.gold())
-
-    embed = discord.Embed(color=color)
-    embed.set_author(name=f"{player.display_name}  (Rank #{lb_rank} 🏆)",
-                     icon_url=player.display_avatar.url)
-    embed.set_thumbnail(url=player.display_avatar.url)
-    # paired fields share a row (3 inline fields per row in Discord)
-    embed.add_field(name="📊 Elo (Max)", value=f"**{p['elo']} ({peak})**")
-    embed.add_field(name="⚔️ Winrate", value=f"**{winrate}% ({games} Total)**")
-    # Blank third column completes this row so Nemesis/Scapegoat wrap to the next row
-    # with a single row-gap (a full-width spacer field would show two blank lines).
-    embed.add_field(name="​", value="​")
-
-    # Nemesis (most-played opponent you trail) and Scapegoat (most-played you lead).
-    # Ranked by total games together, not winrate, so a single fluke game can't win.
-    h2h = db.head_to_head(player.id)
-
-    def _opp_name(oid):
-        m = interaction.guild.get_member(int(oid)) if interaction.guild else None
-        return m.display_name if m else f"<@{oid}>"
-
-    # The opponent the player has lost to most / beaten most. A player in the table
-    # has played at least one game, so there is always at least one opponent.
-    nemesis = max(h2h, key=lambda r: r["losses"])
-    scapegoat = max(h2h, key=lambda r: r["wins"])
-    # Full-width (own line) so the variable-length opponent names stay out of the
-    # 3-column grid and can't affect the faction/ultimate/class column widths.
-    embed.add_field(
-        name="😈 Nemesis",
-        value=f"**({nemesis['wins']}:{nemesis['losses']})  **"
-              f"{_opp_name(nemesis['opponent_id'])} ", inline=False)
-    embed.add_field(
-        name="🐑 Scapegoat",
-        value=f"**({scapegoat['wins']}:{scapegoat['losses']})  **"
-              f"{_opp_name(scapegoat['opponent_id'])} ", inline=False)
-
-    # Guild custom emojis by name, used for ultimate (and class) icons.
-    emoji_by_name = {e.name: str(e) for e in (interaction.guild.emojis if interaction.guild else [])}
-
-    # Factions: emoji + W:L, most-played first.
-    fac_cells = [f"{config.FACTION_EMOJI.get(r['faction'], '')} {_wl(r)}"
-                 for r in all_factions]
-    _grid_section(embed, "🏰", "Factions", fac_cells)
-
-    # Ultimates: every one played, sorted by pickrate (games desc). Emoji only,
-    # falling back to the name if the guild has no matching custom emoji.
-    def _ult_label(name):
-        return emoji_by_name.get(config.ultimate_emoji_name(name)) or name
-
-    ult_cells = [f"{_ult_label(r['ultimate'])} {_wl(r)}"
-                 for r in bd["ultimates"]]
-    _grid_section(embed, "✨", "Ultimates", ult_cells)
-
-    # Classes: shown with their representative ultimate's emoji.
-    def _cls_label(cls):
-        return (emoji_by_name.get(config.ultimate_emoji_name(CLASS_ULTIMATE[cls]))
-                or config.CLASS_EMOJI.get(cls, cls))
-
-    cls_cells = [f"{_cls_label(r['class'])} {_wl(r)}"
-                 for r in bd["classes"]]
-    _grid_section(embed, "⚔️", "Classes", cls_cells)
-
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 

@@ -14,11 +14,13 @@ from cards.svg_leaderboard import (  # noqa: F401
     render_rows,
     render_faction_table,
     render_result,
+    render_reckoning,
     render_elo_curve,
     render_header_async,
     render_rows_async,
     render_faction_table_async,
     render_result_async,
+    render_reckoning_async,
 )
 from cards.svg_stats import (  # noqa: F401
     render_stats_header_img,

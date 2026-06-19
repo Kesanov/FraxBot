@@ -2,12 +2,13 @@
 
 import asyncio
 
-from config import FACTION_COLORS, faction_base, faction_emoji
+from config import FACTION_COLORS, FACTION_EMOJI, faction_base, faction_emoji
 from cards.model import _latinize, default_avatar
 from cards.svg_base import (
     W, _esc, _lux_bg, _save, _FONT_FAMILY, render_text, render_engraved, render_small_caps,
     _cell, _GOLD_EDGE, _CELL_STROKE_W, RANK_COLORS,
-    _OUTER_PAD, _HDR_VPAD, _CELL_OUTER_PAD, _font_runs,
+    _OUTER_PAD, _HDR_VPAD, _CELL_OUTER_PAD, _font_runs, _run_width,
+    _local_data_uri, _TOWNS_DIR, _ULTIMATES_DIR,
 )
 
 
@@ -186,6 +187,136 @@ def render_result(winner, loser, delta, out_path,
     return _save(svg, out_path, scale)
 
 
+def render_reckoning(data, out_path, title="Reckoning", scale=1):
+    """The 'streak slayer' card celebrating the match that ended the biggest win
+    streak of the week.
+
+    Modern, asymmetric layout: the slayer owns a wide left zone (default
+    player-cell background) with the broken streak screaming next to their name;
+    a single red slash divides off a narrow, dark zone for the vanquished loser.
+
+    `data` = {"streak", "delta",
+              "winner": {name, avatar, faction},
+              "loser":  {name, avatar, faction}}
+    """
+    streak = data["streak"]
+    delta = data["delta"]
+    win, lose = data["winner"], data["loser"]
+
+    cell_top = 26
+    cell_h = 162
+    pad = _OUTER_PAD
+    height = cell_top + cell_h + pad
+    out_w = 800
+    out_h = height * out_w // W
+
+    RED = "#e53935"
+    DARK_RED = "#4a0e1c"            # loser zone wash
+    STREAK_COL = "#ffab40"          # same orange as the leaderboard player cells
+    WIN_BORDER, LOSE_BORDER = "#ffd54f", "#9045CE"
+
+    yt, yb = cell_top + 4, cell_top + cell_h - 4
+    cx0 = _CELL_OUTER_PAD          # cell left edge
+    cx1 = W - _CELL_OUTER_PAD      # cell right edge
+    cw, ch = W - 2 * cx0, cell_h - 8
+    cy = (yt + yb) // 2
+
+    def _side(p):
+        base = faction_base(p["faction"])
+        return {
+            "name": _latinize(p["name"]),
+            "avatar": p.get("avatar") or default_avatar(p["name"]),
+            "col": FACTION_COLORS.get(base, "#90a4ae"),
+            "town": _local_data_uri(_TOWNS_DIR, base + ".gif"),
+        }
+
+    w, l = _side(win), _side(lose)
+
+    def _avatar(acx, acy, ar, href, border, dim=False):
+        cid = f"rk_{acx}"
+        op = ' opacity="0.78"' if dim else ""
+        return (
+            f'<clipPath id="{cid}"><circle cx="{acx}" cy="{acy}" r="{ar}"/></clipPath>'
+            f'<circle cx="{acx}" cy="{acy}" r="{ar+4}" fill="none" '
+            f'stroke="{border}" stroke-width="3"/>'
+            f'<image x="{acx-ar}" y="{acy-ar}" width="{ar*2}" height="{ar*2}" '
+            f'href="{_esc(href)}" clip-path="url(#{cid})"{op}/>'
+        )
+
+    def _icon(href, x, y, sz, border=None):
+        if not href:
+            return ""
+        frame = (f'<rect x="{x}" y="{y}" width="{sz}" height="{sz}" rx="8" '
+                 f'fill="none" stroke="{border}" stroke-width="2" stroke-opacity="0.8"/>'
+                 if border else "")
+        return (f'<image x="{x}" y="{y}" width="{sz}" height="{sz}" rx="8" '
+                f'href="{_esc(href)}"/>' + frame)
+
+    # The single slash that divides the two players (a thick red bar with a
+    # forward lean). The dark loser zone lives to its right.
+    dx = int(W * 0.72)
+    lean = 34
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{out_w}" height="{out_h}" '
+        f'viewBox="0 0 {W} {height}" font-family="{_FONT_FAMILY}">',
+        _lux_bg(),
+        _cell(cx0, yt, cw, ch, 18),
+        f'<clipPath id="rkzone"><rect x="{cx0+3}" y="{yt+3}" width="{cw-6}" '
+        f'height="{ch-6}" rx="15"/></clipPath>',
+        # Dark zone for the vanquished, right of the slash.
+        f'<polygon points="{dx+lean},{yt} {cx1},{yt} {cx1},{yb} {dx-lean},{yb}" '
+        f'fill="{DARK_RED}" fill-opacity="0.6" clip-path="url(#rkzone)"/>',
+        # The slash — same gold-bevel style as the cell border.
+        f'<line x1="{dx-lean}" y1="{yb-6}" x2="{dx+lean}" y2="{yt+6}" '
+        f'stroke="url(#goldEdge)" stroke-width="{_CELL_STROKE_W}" stroke-linecap="round"/>',
+    ]
+
+    GOLD = "#ffd54f"
+    BSZ = 38  # town badge size
+
+    def _town_badge(href, ccx, ccy, border):
+        return _icon(href, ccx - BSZ // 2, ccy - BSZ // 2, BSZ, border=border)
+
+    # --- Slayer (winner): avatar + name + claimed-streak line, grouped left ---
+    ar_w = 56
+    acx_w = cx0 + 18 + ar_w       # padded off the frame
+    parts.append(_avatar(acx_w, cy, ar_w, w["avatar"], WIN_BORDER))
+    # Town badge on the avatar's bottom-right corner (was the trophy).
+    parts.append(_town_badge(w["town"], acx_w + round(ar_w * 0.7),
+                             cy + round(ar_w * 0.7), w["col"]))
+
+    tx = acx_w + ar_w + 26
+    # Big gold name sitting high, with the Elo gain tucked underneath.
+    parts.append(render_text(tx, cy - 6, w["name"][:12], 50, GOLD))
+    parts.append(render_text(tx, cy + 30, f'+{delta} ELO', 26, "#66bb6a"))
+
+    # --- Centre: huge broken-streak number + fire, CLAIMED label beneath ---
+    cxm = int(W * 0.56)
+    nstr, fire = str(streak), "🔥"
+    nw = _run_width(False, nstr, 80, "700", False)
+    fw = _run_width(True, fire, 64, "700", False)
+    gap = -10  # number and fire almost touch
+    gx = cxm - (nw + gap + fw) / 2
+    parts.append(render_text(gx, cy + 6, nstr, 80, STREAK_COL))
+    parts.append(render_text(gx + nw + gap, cy + 4, fire, 64, STREAK_COL))
+    parts.append(render_text(cxm, cy + 50, "VANQUISHED", 30, "#e53935", anchor="middle"))
+
+    # --- Vanquished (loser): narrow dark zone on the right ---
+    ar_l = 46
+    acx_l = cx1 - 16 - ar_l       # padded off the frame
+    parts.append(_avatar(acx_l, cy, ar_l, l["avatar"], LOSE_BORDER, dim=True))
+    # Town badge on the avatar's bottom-left corner (was the skull).
+    parts.append(_town_badge(l["town"], acx_l - round(ar_l * 0.7),
+                             cy + round(ar_l * 0.7), l["col"]))
+    lnx = acx_l - ar_l - 22
+    parts.append(render_small_caps(lnx, cy - 18, "DEFEATED", 20, "#ff5b7a", anchor="end"))
+    parts.append(render_text(lnx, cy + 28, l["name"][:10], 30, GOLD, anchor="end"))
+
+    parts.append("</svg>")
+    return _save("".join(parts), out_path, scale)
+
+
 def render_elo_curve(out_path, k=96, scale=2):
     """Line chart: ELO gained on a win / lost on a loss vs the rating gap
     (your ELO − opponent ELO), from -500 to +500."""
@@ -262,3 +393,7 @@ async def render_faction_table_async(rows, out_path):
 async def render_result_async(winner, loser, delta, out_path, winner_avatar=None, loser_avatar=None):
     return await asyncio.to_thread(
         render_result, winner, loser, delta, out_path, winner_avatar, loser_avatar)
+
+
+async def render_reckoning_async(data, out_path, title="Reckoning"):
+    return await asyncio.to_thread(render_reckoning, data, out_path, title)
