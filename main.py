@@ -518,24 +518,37 @@ async def build_leaderboard_images(tag):
 
     top = db.top_players(12)
     tail = db.active_tail(below_rank=12, limit=4)
-    streak_break = db.biggest_streak_break(days=7)
+    streak_break = db.biggest_streak_break(days=3)
+    win_streak = db.biggest_win_streak(days=2)
 
     # one batch of avatar/name lookups covers every player on the board
     needed = {p["user_id"] for p in top + tail}
     if streak_break:
         needed |= {streak_break["winner_id"], streak_break["loser_id"]}
+    if win_streak:
+        needed |= {win_streak["winner_id"], win_streak["loser_id"]}
     async with aiohttp.ClientSession() as session:
         avatars = {uid: await get_avatar(session, uid) for uid in needed}
     names = {uid: await get_display_name(uid) for uid in needed}
     av = lambda uid: avatars.get(uid)
     nm = lambda uid: names.get(uid)
 
-    # Reckoning card (streak slayer of the week), right under the header.
-    rk = model.build_reckoning(streak_break, avatar_resolver=av, name_resolver=nm)
-    if rk:
-        rk_path = await renderer.render_reckoning_async(
-            rk, os.path.join(d, "lb_reckoning.webp"))
-        paths.append(rk_path)
+    # Pick whichever highlight card has the bigger streak N.
+    # Vanquished (reckoning) comes from last 3 days; Undefeated from last 2 days.
+    sb_n = streak_break["streak"] if streak_break else 0
+    ws_n = win_streak["streak"] if win_streak else 0
+    if ws_n > sb_n:
+        ud = model.build_undefeated(win_streak, avatar_resolver=av, name_resolver=nm)
+        if ud:
+            rk_path = await renderer.render_undefeated_async(
+                ud, os.path.join(d, "lb_reckoning.webp"))
+            paths.append(rk_path)
+    else:
+        rk = model.build_reckoning(streak_break, avatar_resolver=av, name_resolver=nm)
+        if rk:
+            rk_path = await renderer.render_reckoning_async(
+                rk, os.path.join(d, "lb_reckoning.webp"))
+            paths.append(rk_path)
 
     # Top 12 in chunks of 4 (deleted accounts dropped).
     top = [p for p in top if names.get(p["user_id"]) is not None][:12]

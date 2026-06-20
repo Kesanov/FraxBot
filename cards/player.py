@@ -94,8 +94,9 @@ async def build_player_embed(interaction, player, resolve_name):
     # Full-width (own line) so the variable-length opponent names stay out of the
     # 3-column grid and can't affect the faction/ultimate/class column widths.
     h2h = db.head_to_head(player.id)
-    for emoji_label, key in (("😈 Nemesis", "losses"), ("🐑 Scapegoat", "wins")):
-        r = max(h2h, key=lambda row: row[key])
+    for emoji_label, score in (("😈 Nemesis", lambda r: -r["wins"] / (r["games"] + 1)),
+                               ("🐑 Scapegoat", lambda r:  r["wins"] / (r["games"] + 1))):
+        r = max(h2h, key=score)
         name = await resolve_name(str(r["opponent_id"])) or f"<@{r['opponent_id']}>"
         embed.add_field(name=emoji_label,
                         value=f"**({r['wins']}:{r['losses']})  **{name} ",
@@ -111,7 +112,7 @@ async def build_player_embed(interaction, player, resolve_name):
 
     # Factions: emoji + W:L, most-played first.
     _grid_section(embed, "Factions",
-                  [f"{config.FACTION_EMOJI.get(r['faction'], '')} {_wl(r)}"
+                  [f"{emoji_by_name.get(r['faction'], config.FACTION_EMOJI.get(r['faction'], ''))} {_wl(r)}"
                    for r in factions])
     # Ultimates: every one played, sorted by pickrate; emoji only, name as fallback.
     _grid_section(embed, "Ultimates",

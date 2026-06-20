@@ -79,6 +79,27 @@ def build_reckoning(break_row, avatar_resolver=None, name_resolver=None):
     }
 
 
+def build_undefeated(streak_row, avatar_resolver=None, name_resolver=None):
+    """Shape a db.biggest_win_streak() row into render_undefeated() data, or None."""
+    if not streak_row:
+        return None
+
+    def _side(prefix):
+        uid = streak_row[f"{prefix}_id"]
+        name = (name_resolver(uid) if name_resolver else None) or f"<@{uid}>"
+        avatar = avatar_resolver(uid) if avatar_resolver else None
+        return {"name": name, "avatar": avatar,
+                "faction": streak_row[f"{prefix}_faction"] or "",
+                "ultimate": streak_row.get(f"{prefix}_ultimate") or ""}
+
+    return {
+        "streak": streak_row["streak"],
+        "delta": streak_row["delta"],
+        "winner": _side("winner"),
+        "loser": _side("loser"),
+    }
+
+
 def streak_label(streak: int) -> str:
     """🔥 for a win streak, – otherwise"""
     if streak >= 1:

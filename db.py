@@ -361,6 +361,39 @@ def biggest_streak_break(days: int = 7):
     return best
 
 
+def biggest_win_streak(days: int = 2):
+    """The match in the last `days` that extended the biggest ongoing win streak.
+
+    Replays match history to track running streaks. Among matches within the
+    cutoff where the winner's streak increased, returns the one whose winner
+    ended up with the highest streak. Returns the same shape as
+    biggest_streak_break(), or None if no qualifying match exists.
+    """
+    from datetime import datetime, timedelta
+
+    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    with _conn() as con:
+        rows = con.execute("SELECT * FROM matches ORDER BY id").fetchall()
+    streaks = {}
+    best = None
+    for m in rows:
+        w, l = m["winner_id"], m["loser_id"]
+        l_streak = streaks.get(l, 0)
+        w_s = streaks.get(w, 0)
+        new_w_streak = w_s + 1 if w_s > 0 else 1
+        if (m["played_at"] >= cutoff
+                and (best is None or new_w_streak > best["streak"])):
+            best = {
+                "winner_id": w, "loser_id": l,
+                "winner_faction": m["winner_faction"], "loser_faction": m["loser_faction"],
+                "winner_ultimate": m["winner_ultimate"], "loser_ultimate": m["loser_ultimate"],
+                "delta": m["delta"], "streak": new_w_streak, "played_at": m["played_at"],
+            }
+        streaks[w] = new_w_streak
+        streaks[l] = l_streak - 1 if l_streak < 0 else -1
+    return best
+
+
 def faction_stats():
     """Global per-faction record, mirrors excluded, sorted by winrate then games (desc)."""
     with _conn() as con:

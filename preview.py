@@ -158,6 +158,16 @@ def render_leaderboard():
         name_resolver=names.get)
     print("reckoning->", renderer.render_reckoning(rk, _out("lb_reckoning.jpg")))
 
+    # Undefeated card (alternative to reckoning when ongoing streak wins).
+    ud = model.build_undefeated(
+        {"streak": 11, "delta": 27,
+         "winner_id": "2", "loser_id": "1",
+         "winner_faction": SAMPLE_RECKONING["winner"]["faction"],
+         "loser_faction": SAMPLE_RECKONING["loser"]["faction"],
+         "winner_ultimate": "Blood Frenzy", "loser_ultimate": "Angelic Alliance"},
+        name_resolver=names.get)
+    print("undefeated->", renderer.render_undefeated(ud, _out("lb_undefeated.jpg")))
+
     # Top 12 in three chunks of four.
     top = SAMPLE_PLAYERS[:12]
     entries = model.build_entries(top, name_resolver=names.get)
