@@ -43,7 +43,7 @@ def _grid_section(embed, label, cells):
     # Full-width banner header (blank field name + the title in the value). It spans
     # the whole card rather than sitting in a column, so all three columns stay equal
     # width, and being inline=False it forces the columns onto a fresh row.
-    embed.add_field(name="​", value=f"**══ {label} ═══════════════**", inline=False)
+    embed.add_field(name="​", value=f"**<<═ {label} ═════>>**", inline=False)
     for c in range(3):
         # Pad missing cells with a zero-width space so columns stay aligned.
         col = [row[c] if c < len(row) else "​" for row in rows]
@@ -94,8 +94,8 @@ async def build_player_embed(interaction, player, resolve_name):
     # Full-width (own line) so the variable-length opponent names stay out of the
     # 3-column grid and can't affect the faction/ultimate/class column widths.
     h2h = db.head_to_head(player.id)
-    for emoji_label, score in (("😈 Nemesis", lambda r: -r["wins"] / (r["games"] + 1)),
-                               ("🐑 Scapegoat", lambda r:  r["wins"] / (r["games"] + 1))):
+    for emoji_label, score in (("😈 Nemesis",  lambda r: -(r["wins"] + 1) / (r["games"] + 1)),
+                               ("🐑 Scapegoat", lambda r:   r["wins"]      / (r["games"] + 1))):
         r = max(h2h, key=score)
         name = await resolve_name(str(r["opponent_id"])) or f"<@{r['opponent_id']}>"
         embed.add_field(name=emoji_label,
