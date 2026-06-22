@@ -109,10 +109,28 @@ def init_db():
         con.execute(
             "UPDATE matches SET version=? WHERE version IS NULL", (VERSION_STR,)
         )
-        # Migrate older DBs that predate peak_elo, then backfill peaks by replaying
-        # match history (winner +delta, loser -delta from ELO_START).
-        if "peak_elo" not in {r["name"] for r in con.execute("PRAGMA table_info(players)")}:
+        # Ensure peak_elo column exists and is nullable.
+        # SQLite can't ALTER COLUMN, so if it was created NOT NULL we recreate the table.
+        player_cols = {r["name"]: r for r in con.execute("PRAGMA table_info(players)")}
+        if "peak_elo" not in player_cols:
             con.execute("ALTER TABLE players ADD COLUMN peak_elo INTEGER")
+        elif player_cols["peak_elo"]["notnull"]:
+            # Drop the NOT NULL constraint by recreating the table.
+            con.executescript("""
+                PRAGMA foreign_keys = OFF;
+                ALTER TABLE players RENAME TO _players_old;
+                CREATE TABLE players (
+                    user_id   TEXT PRIMARY KEY,
+                    elo       INTEGER NOT NULL,
+                    wins      INTEGER NOT NULL DEFAULT 0,
+                    losses    INTEGER NOT NULL DEFAULT 0,
+                    streak    INTEGER NOT NULL DEFAULT 0,
+                    peak_elo  INTEGER
+                );
+                INSERT INTO players SELECT user_id, elo, wins, losses, streak, NULL FROM _players_old;
+                DROP TABLE _players_old;
+                PRAGMA foreign_keys = ON;
+            """)
         # peak_elo=0 is the old sentinel (ELO_START=1000 means 0 is never a real peak).
         # Trigger a full backfill whenever any player has a stale/sentinel value.
         if con.execute("SELECT COUNT(*) FROM players WHERE peak_elo=0 OR (peak_elo IS NULL AND wins+losses>=10)").fetchone()[0]:
