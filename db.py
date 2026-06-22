@@ -113,7 +113,9 @@ def init_db():
         # match history (winner +delta, loser -delta from ELO_START).
         if "peak_elo" not in {r["name"] for r in con.execute("PRAGMA table_info(players)")}:
             con.execute("ALTER TABLE players ADD COLUMN peak_elo INTEGER")
-        if con.execute("SELECT COUNT(*) FROM players WHERE peak_elo IS NULL AND wins+losses>=10").fetchone()[0]:
+        # peak_elo=0 is the old sentinel (ELO_START=1000 means 0 is never a real peak).
+        # Trigger a full backfill whenever any player has a stale/sentinel value.
+        if con.execute("SELECT COUNT(*) FROM players WHERE peak_elo=0 OR (peak_elo IS NULL AND wins+losses>=10)").fetchone()[0]:
             _backfill_peaks(con)
 
 
@@ -163,13 +165,13 @@ def record_match(winner_id, loser_id, w_faction, w_class, w_ult, l_faction, l_cl
         new_w, new_l, delta = elo.update_ratings(w_elo, l_elo)
         con.execute(
             "UPDATE players SET elo=?, wins=wins+1, streak=?, "
-            "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE NULL END "
+            "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE peak_elo END "
             "WHERE user_id=?",
             (new_w, w_streak + 1 if w_streak > 0 else 1, new_w, new_w, w_id),
         )
         con.execute(
             "UPDATE players SET elo=?, losses=losses+1, streak=?, "
-            "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE NULL END "
+            "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE peak_elo END "
             "WHERE user_id=?",
             (new_l, l_streak - 1 if l_streak < 0 else -1, new_l, new_l, l_id),
         )
