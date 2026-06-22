@@ -151,20 +151,24 @@ FACTION_COLORS = {
 
 
 
-def rank_title(elo: int) -> str:
-    """Map an ELO value to a display rank title."""
-    if elo >= 2000:
+def rank_title(peak_elo: int | None) -> str:
+    """Map a player's peak ELO (None = fewer than 10 games) to a display rank title."""
+    if peak_elo is None:
+        return "LandLord"
+    if peak_elo >= 2000:
         return "Seraph"
-    if elo >= 1800:
+    if peak_elo >= 1800:
         return "Champion"
-    if elo >= 1600:
+    if peak_elo >= 1600:
         return "Renegade"
-    if elo >= 1400:
+    if peak_elo >= 1400:
         return "Inquisitor"
-    if elo >= 1200:
+    if peak_elo >= 1200:
         return "Paladin"
-    if elo >= 1000:
+    if peak_elo >= 1000:
         return "Knight"
-    if elo >= 800:
+    if peak_elo >= 900:
         return "Squire"
+    if peak_elo >= 800:
+        return "Footman"
     return "LandLord"

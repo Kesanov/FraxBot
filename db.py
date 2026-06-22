@@ -81,7 +81,7 @@ def init_db():
                 wins      INTEGER NOT NULL DEFAULT 0,
                 losses    INTEGER NOT NULL DEFAULT 0,
                 streak    INTEGER NOT NULL DEFAULT 0,
-                peak_elo  INTEGER NOT NULL DEFAULT 0
+                peak_elo  INTEGER
             );
             CREATE TABLE IF NOT EXISTS matches (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -112,35 +112,44 @@ def init_db():
         # Migrate older DBs that predate peak_elo, then backfill peaks by replaying
         # match history (winner +delta, loser -delta from ELO_START).
         if "peak_elo" not in {r["name"] for r in con.execute("PRAGMA table_info(players)")}:
-            con.execute("ALTER TABLE players ADD COLUMN peak_elo INTEGER NOT NULL DEFAULT 0")
-        if con.execute("SELECT COUNT(*) FROM players WHERE peak_elo=0").fetchone()[0]:
+            con.execute("ALTER TABLE players ADD COLUMN peak_elo INTEGER")
+        if con.execute("SELECT COUNT(*) FROM players WHERE peak_elo IS NULL AND wins+losses>=10").fetchone()[0]:
             _backfill_peaks(con)
 
 
 def _backfill_peaks(con):
-    """Replay all matches in order to set each player's all-time ELO peak."""
-    cur = {}   # user_id -> running elo
-    peak = {}  # user_id -> max elo seen
+    """Replay all matches in order to set each player's all-time ELO peak.
+
+    peak_elo remains NULL until a player has played their 10th game.
+    """
+    cur = {}    # user_id -> running elo
+    peak = {}   # user_id -> max elo seen (only set after game 10)
+    games = {}  # user_id -> game count
     for w, l, d in con.execute(
         "SELECT winner_id, loser_id, delta FROM matches ORDER BY id"
     ):
         for uid in (w, l):
             if uid not in cur:
-                cur[uid] = peak[uid] = ELO_START
+                cur[uid] = ELO_START
+                games[uid] = 0
         cur[w] += d
         cur[l] -= d
-        peak[w] = max(peak[w], cur[w])
-        peak[l] = max(peak[l], cur[l])
+        for uid in (w, l):
+            games[uid] += 1
+            if games[uid] >= 10:
+                peak[uid] = max(peak.get(uid, cur[uid]), cur[uid])
     for uid, elo_val in con.execute("SELECT user_id, elo FROM players").fetchall():
-        con.execute("UPDATE players SET peak_elo=? WHERE user_id=?",
-                    (max(peak.get(uid, elo_val), elo_val), uid))
+        p = peak.get(uid)
+        if p is not None:
+            p = max(p, elo_val)
+        con.execute("UPDATE players SET peak_elo=? WHERE user_id=?", (p, uid))
 
 
 def _ensure_player(con, user_id: str):
     row = con.execute("SELECT elo, streak FROM players WHERE user_id=?", (user_id,)).fetchone()
     if row is None:
-        con.execute("INSERT INTO players (user_id, elo, peak_elo) VALUES (?,?,?)",
-                    (user_id, ELO_START, ELO_START))
+        con.execute("INSERT INTO players (user_id, elo) VALUES (?,?)",
+                    (user_id, ELO_START))
         return ELO_START, 0
     return row["elo"], row["streak"]
 
@@ -153,14 +162,16 @@ def record_match(winner_id, loser_id, w_faction, w_class, w_ult, l_faction, l_cl
         l_elo, l_streak = _ensure_player(con, l_id)
         new_w, new_l, delta = elo.update_ratings(w_elo, l_elo)
         con.execute(
-            "UPDATE players SET elo=?, wins=wins+1, streak=?, peak_elo=MAX(peak_elo,?) "
+            "UPDATE players SET elo=?, wins=wins+1, streak=?, "
+            "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE NULL END "
             "WHERE user_id=?",
-            (new_w, w_streak + 1 if w_streak > 0 else 1, new_w, w_id),
+            (new_w, w_streak + 1 if w_streak > 0 else 1, new_w, new_w, w_id),
         )
         con.execute(
-            "UPDATE players SET elo=?, losses=losses+1, streak=?, peak_elo=MAX(peak_elo,?) "
+            "UPDATE players SET elo=?, losses=losses+1, streak=?, "
+            "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE NULL END "
             "WHERE user_id=?",
-            (new_l, l_streak - 1 if l_streak < 0 else -1, new_l, l_id),
+            (new_l, l_streak - 1 if l_streak < 0 else -1, new_l, new_l, l_id),
         )
         con.execute(
             """INSERT INTO matches

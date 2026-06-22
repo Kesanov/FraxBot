@@ -82,7 +82,9 @@ async def build_player_embed(interaction, player, resolve_name):
                      icon_url=player.display_avatar.url)
     embed.set_thumbnail(url=player.display_avatar.url)
     # paired fields share a row (3 inline fields per row in Discord)
-    embed.add_field(name="📊 Elo (Max)", value=f"**{p['elo']} ({p['peak_elo']})**")
+    peak = p["peak_elo"]
+    elo_display = f"{p['elo']} ({peak})" if peak is not None else str(p["elo"])
+    embed.add_field(name="📊 Elo (Max)", value=f"**{elo_display}**")
     embed.add_field(name="⚔️ Winrate", value=f"**{winrate}% ({games} Total)**")
     # Blank third column completes this row so Nemesis/Scapegoat wrap to the next row
     # with a single row-gap (a full-width spacer field would show two blank lines).
@@ -114,13 +116,13 @@ async def build_player_embed(interaction, player, resolve_name):
     _grid_section(embed, "Factions",
                   [f"{emoji_by_name.get(r['faction'], config.FACTION_EMOJI.get(r['faction'], ''))} {_wl(r)}"
                    for r in factions])
-    # Ultimates: every one played, sorted by pickrate; emoji only, name as fallback.
-    _grid_section(embed, "Ultimates",
-                  [f"{_emoji(r['ultimate'], r['ultimate'])} {_wl(r)}"
-                   for r in bd["ultimates"]])
     # Classes: shown with their representative ultimate's emoji.
     _grid_section(embed, "Classes",
                   [f"{_emoji(CLASS_ULTIMATE[r['class']], config.CLASS_EMOJI.get(r['class'], r['class']))} {_wl(r)}"
                    for r in bd["classes"]])
+    # Ultimates: every one played, sorted by pickrate; emoji only, name as fallback.
+    _grid_section(embed, "Ultimates",
+                  [f"{_emoji(r['ultimate'], r['ultimate'])} {_wl(r)}"
+                   for r in bd["ultimates"]])
 
     return embed

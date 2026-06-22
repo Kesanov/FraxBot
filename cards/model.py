@@ -40,7 +40,7 @@ def build_entries(players, avatar_resolver=None, name_resolver=None):
                 "position": p.get("position", i),
                 "name": _latinize(name),
                 "elo": p["elo"],
-                "rank": rank_title(p["elo"]),
+                "rank": rank_title(p.get("peak_elo")),
                 "wins": p["wins"],
                 "losses": p["losses"],
                 "games": games,

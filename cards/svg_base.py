@@ -93,6 +93,7 @@ RANK_COLORS = {
     "Paladin": "#40cadd",
     "Knight": "#378fe1",
     "Squire": "#4eab8c",
+    "Footman": "#3f9578",
     "LandLord": "#45a545",
 }
 

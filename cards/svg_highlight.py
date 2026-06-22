@@ -43,11 +43,11 @@ _THEME_UNDEFEATED = dict(
     slash_opacity="0.9",
     streak_col="#ffab40",
     streak_emoji="🔥",
-    label="UNDEFEATED",
+    label="INVINCIBLE",
     label_x_offset=-5,
-    label_col="#2e9d33",
+    label_col="#ffab40",
     lose_border="#546e7a",
-    lose_sublabel="VICTIM",
+    lose_sublabel="OPPONENT",
     lose_sublabel_col="#ff5b7a",
     zone_id="udzone",
 )
@@ -126,7 +126,7 @@ def _render_highlight(data, out_path, theme, scale=1):
                              cy + round(ar_w * 0.7), w["col"]))
     tx = acx_w + ar_w + 26
     parts.append(render_text(tx, cy - 6, w["name"][:12], 50, _GOLD))
-    parts.append(render_text(tx, cy + 30, f'+{delta} ELO', 26, "#66bb6a"))
+    parts.append(render_text(tx, cy + 30, f'+{delta} ELO', 26, "#3ba040"))
 
     # Centre — streak number + emoji + label
     cxm = int(W * 0.56)

@@ -111,12 +111,23 @@ PENDING: dict[int, PendingGame] = {}
 # Serializes leaderboard updates so the timer and post-game refresh can't race.
 _leaderboard_lock = asyncio.Lock()
 
-# Path to the pre-rendered header image (set once at startup, reused every refresh).
-_cached_header_path: str | None = None
+# Unified SVG card cache: output_path -> MD5 of the inputs that produced it.
+# A card is skipped when its key matches and the file still exists on disk.
+_card_cache: dict[str, str] = {}
 
-# Chunk render cache: chunk_index -> last_hash. Files are named lb_chunk_{i}.webp
-# so there is always exactly one file per leaderboard position.
-_chunk_cache: dict[int, str] = {}
+
+def _card_key(*parts) -> str:
+    return hashlib.md5(str(parts).encode()).hexdigest()
+
+
+async def _render_cached(out_path: str, key: str, coro) -> str:
+    """Await `coro` only when `key` differs or the file is missing; return the path."""
+    if _card_cache.get(out_path) == key and os.path.exists(out_path):
+        return out_path
+    await coro
+    _card_cache[out_path] = key
+    return out_path
+
 
 # Stats header cache: title -> rendered file path. Headers never change so they
 # are rendered once and reused on every daily refresh.
@@ -498,9 +509,8 @@ async def on_raw_reaction_add(payload):
 # leaderboard rendering
 # --------------------------------------------------------------------------
 async def _prerender_header():
-    global _cached_header_path
     path = os.path.join(config.PREVIEW_DIR, "lb_header_cached.webp")
-    _cached_header_path = await renderer.render_header_async(path)
+    await _render_cached(path, "static", renderer.render_header_async(path))
 
 
 async def build_leaderboard_images(tag):
@@ -510,11 +520,9 @@ async def build_leaderboard_images(tag):
     function only does IO (avatar/name resolution + render dispatch); the data
     shaping lives in db/cards.model."""
     d = config.PREVIEW_DIR
-    if _cached_header_path and os.path.exists(_cached_header_path):
-        header_path = _cached_header_path
-    else:
-        header_path = await renderer.render_header_async(os.path.join(d, f"lb_{tag}_header.jpg"))
-    paths = [header_path]
+    header_out = os.path.join(d, "lb_header_cached.webp")
+    paths = [await _render_cached(header_out, "static",
+                                  renderer.render_header_async(header_out))]
 
     top = db.top_players(12)
     tail = db.active_tail(below_rank=12, limit=4)
@@ -537,51 +545,49 @@ async def build_leaderboard_images(tag):
     # Vanquished (reckoning) comes from last 3 days; Undefeated from last 2 days.
     sb_n = streak_break["streak"] if streak_break else 0
     ws_n = win_streak["streak"] if win_streak else 0
-    if ws_n > sb_n:
-        ud = model.build_undefeated(win_streak, avatar_resolver=av, name_resolver=nm)
-        if ud:
-            rk_path = await renderer.render_undefeated_async(
-                ud, os.path.join(d, "lb_reckoning.webp"))
-            paths.append(rk_path)
-    else:
-        rk = model.build_reckoning(streak_break, avatar_resolver=av, name_resolver=nm)
-        if rk:
-            rk_path = await renderer.render_reckoning_async(
-                rk, os.path.join(d, "lb_reckoning.webp"))
-            paths.append(rk_path)
+    use_undefeated = ws_n > sb_n
+    hl_row = win_streak if use_undefeated else streak_break
+    if hl_row:
+        hl_out = os.path.join(d, "lb_reckoning.webp")
+        hl_key = _card_key("ud" if use_undefeated else "rk",
+                           hl_row["winner_id"], hl_row["loser_id"],
+                           hl_row["streak"], hl_row["delta"])
+        if use_undefeated:
+            ud = model.build_undefeated(hl_row, avatar_resolver=av, name_resolver=nm)
+            coro = renderer.render_undefeated_async(ud, hl_out) if ud else None
+        else:
+            rk = model.build_reckoning(hl_row, avatar_resolver=av, name_resolver=nm)
+            coro = renderer.render_reckoning_async(rk, hl_out) if rk else None
+        if coro:
+            paths.append(await _render_cached(hl_out, hl_key, coro))
 
     # Top 12 in chunks of 4 (deleted accounts dropped).
     top = [p for p in top if names.get(p["user_id"]) is not None][:12]
     entries = model.build_entries(top, avatar_resolver=av, name_resolver=nm)
     for i in range(0, len(entries), 4):
         chunk = top[i:i + 4]
-        n = i // 4
-        key = hashlib.md5(
-            str([(p["user_id"], p["elo"], p["wins"], p["losses"], p["streak"])
-                 for p in chunk]).encode()
-        ).hexdigest()
-        out = os.path.join(d, f"lb_chunk_{n}.webp")
-        if _chunk_cache.get(n) == key and os.path.exists(out):
-            paths.append(out)
-            continue
-        path = await renderer.render_rows_async(entries[i:i + 4], out)
-        _chunk_cache[n] = key
-        paths.append(path)
+        out = os.path.join(d, f"lb_chunk_{i // 4}.webp")
+        key = _card_key(*[(p["user_id"], p["elo"], p["wins"], p["losses"], p["streak"])
+                          for p in chunk])
+        paths.append(await _render_cached(
+            out, key, renderer.render_rows_async(entries[i:i + 4], out)))
         await asyncio.sleep(0.3)
 
-    # 4th card: the most-recently-active players ranked below 12, in rank order.
+    # Active players ranked below top 12, in rank order.
     tail = [p for p in tail if names.get(p["user_id"]) is not None]
     if tail:
+        tail_out = os.path.join(d, "lb_tail.webp")
+        tail_key = _card_key(*[(p["user_id"], p["elo"], p["wins"], p["losses"], p["streak"])
+                               for p in tail])
         tail_entries = model.build_entries(tail, avatar_resolver=av, name_resolver=nm)
-        path = await renderer.render_rows_async(
-            tail_entries, os.path.join(d, "lb_tail.webp"))
-        paths.append(path)
+        paths.append(await _render_cached(
+            tail_out, tail_key, renderer.render_rows_async(tail_entries, tail_out)))
     return paths
 
 
 def _cleanup(paths):
     for p in paths:
-        if p == _cached_header_path or p.startswith(
+        if p in _card_cache or p.startswith(
                 os.path.join(config.PREVIEW_DIR, "lb_chunk_")):
             continue
         try:
