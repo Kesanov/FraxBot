@@ -74,6 +74,62 @@ def _class_id(name: str | None) -> int | None:
 
 def init_db():
     with _conn() as con:
+        # Recover from a crashed mid-migration state where players was renamed
+        # to _players_old but the new players table was never created.
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "_players_old" in tables and "players" not in tables:
+            con.execute("PRAGMA foreign_keys = OFF")
+            try:
+                con.execute("""
+                    CREATE TABLE players (
+                        user_id   TEXT PRIMARY KEY,
+                        elo       INTEGER NOT NULL,
+                        wins      INTEGER NOT NULL DEFAULT 0,
+                        losses    INTEGER NOT NULL DEFAULT 0,
+                        streak    INTEGER NOT NULL DEFAULT 0,
+                        peak_elo  INTEGER
+                    )
+                """)
+                con.execute("INSERT INTO players SELECT user_id, elo, wins, losses, streak, NULL FROM _players_old")
+                con.execute("DROP TABLE _players_old")
+                con.commit()
+            finally:
+                con.execute("PRAGMA foreign_keys = ON")
+        elif "_players_old" in tables:
+            con.execute("PRAGMA foreign_keys = OFF")
+            con.execute("DROP TABLE _players_old")
+            con.execute("PRAGMA foreign_keys = ON")
+            con.commit()
+
+        # Fix matches table if its FK references still point to _players_old
+        # (left behind by a previous successful migration that didn't update the schema).
+        matches_sql = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='matches'").fetchone()
+        if matches_sql and "_players_old" in matches_sql[0]:
+            con.execute("PRAGMA foreign_keys = OFF")
+            try:
+                con.execute("ALTER TABLE matches RENAME TO _matches_old")
+                con.execute("""
+                    CREATE TABLE matches (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        winner_id       TEXT NOT NULL REFERENCES players(user_id),
+                        loser_id        TEXT NOT NULL REFERENCES players(user_id),
+                        winner_faction  TEXT,
+                        winner_class    INTEGER,
+                        winner_ultimate TEXT,
+                        loser_faction   TEXT,
+                        loser_class     INTEGER,
+                        loser_ultimate  TEXT,
+                        delta           INTEGER NOT NULL DEFAULT 0,
+                        played_at       TEXT NOT NULL DEFAULT (datetime('now')),
+                        version         TEXT
+                    )
+                """)
+                con.execute("INSERT INTO matches SELECT * FROM _matches_old")
+                con.execute("DROP TABLE _matches_old")
+                con.commit()
+            finally:
+                con.execute("PRAGMA foreign_keys = ON")
+
         con.executescript("""
             CREATE TABLE IF NOT EXISTS players (
                 user_id   TEXT PRIMARY KEY,
