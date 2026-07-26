@@ -1,10 +1,14 @@
 """SQLite storage for players and matches."""
 
 import sqlite3
+import threading
 from contextlib import contextmanager
 
-from config import DB_PATH, ELO_START, FACTIONS, CLASSES, ULTIMATES, VERSION, STAT_PRIOR
+from config import DB_PATH, ELO_START, FACTIONS, CLASSES, ULTIMATES, VERSION, STAT_PRIOR, ULTIMATE_DB_NAME
 import elo
+
+# Serialize match recording so ELO updates always read current database state
+_record_match_lock = threading.Lock()
 
 VERSION_STR = ".".join(str(p) for p in VERSION)
 
@@ -19,9 +23,13 @@ def _vtuple(s):
 
 def _bucketed(rows):
     """rows of (key, version, count) -> {key: {version_tuple: count}}."""
+    from config import ULTIMATE_ALIASES
     out = {}
     for key, ver, cnt in rows:
-        out.setdefault(key, {})[_vtuple(ver)] = cnt
+        key = ULTIMATE_ALIASES.get(key, key)
+        bucket = out.setdefault(key, {})
+        vt = _vtuple(ver)
+        bucket[vt] = bucket.get(vt, 0) + cnt
     return out
 
 
@@ -241,31 +249,33 @@ def _ensure_player(con, user_id: str):
 def record_match(winner_id, loser_id, w_faction, w_class, w_ult, l_faction, l_class, l_ult):
     """Record a confirmed match. Returns dict with new ratings and delta."""
     w_id, l_id = str(winner_id), str(loser_id)
-    with _conn() as con:
-        w_elo, w_streak = _ensure_player(con, w_id)
-        l_elo, l_streak = _ensure_player(con, l_id)
-        new_w, new_l, delta = elo.update_ratings(w_elo, l_elo)
-        con.execute(
-            "UPDATE players SET elo=?, wins=wins+1, streak=?, "
-            "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE peak_elo END "
-            "WHERE user_id=?",
-            (new_w, w_streak + 1 if w_streak > 0 else 1, new_w, new_w, w_id),
-        )
-        con.execute(
-            "UPDATE players SET elo=?, losses=losses+1, streak=?, "
-            "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE peak_elo END "
-            "WHERE user_id=?",
-            (new_l, l_streak - 1 if l_streak < 0 else -1, new_l, new_l, l_id),
-        )
-        con.execute(
-            """INSERT INTO matches
-               (winner_id, loser_id,
-                winner_faction, winner_class, winner_ultimate,
-                loser_faction,  loser_class,  loser_ultimate,
-                delta, version)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (w_id, l_id, w_faction, _class_id(w_class), w_ult, l_faction, _class_id(l_class), l_ult, delta, VERSION_STR),
-        )
+    with _record_match_lock:
+        with _conn() as con:
+            w_elo, w_streak = _ensure_player(con, w_id)
+            l_elo, l_streak = _ensure_player(con, l_id)
+            new_w, new_l, delta = elo.update_ratings(w_elo, l_elo)
+            con.execute(
+                "UPDATE players SET elo=?, wins=wins+1, streak=?, "
+                "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE peak_elo END "
+                "WHERE user_id=?",
+                (new_w, w_streak + 1 if w_streak > 0 else 1, new_w, new_w, w_id),
+            )
+            con.execute(
+                "UPDATE players SET elo=?, losses=losses+1, streak=?, "
+                "peak_elo=CASE WHEN wins+losses+1>=10 THEN MAX(COALESCE(peak_elo,?),?) ELSE peak_elo END "
+                "WHERE user_id=?",
+                (new_l, l_streak - 1 if l_streak < 0 else -1, new_l, new_l, l_id),
+            )
+            con.execute(
+                """INSERT INTO matches
+                   (winner_id, loser_id,
+                    winner_faction, winner_class, winner_ultimate,
+                    loser_faction,  loser_class,  loser_ultimate,
+                    delta, version)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (w_id, l_id, w_faction, _class_id(w_class), ULTIMATE_DB_NAME.get(w_ult, w_ult),
+                 l_faction, _class_id(l_class), ULTIMATE_DB_NAME.get(l_ult, l_ult), delta, VERSION_STR),
+            )
     return {"winner_elo": new_w, "loser_elo": new_l, "delta": delta}
 
 

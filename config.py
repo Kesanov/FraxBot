@@ -40,7 +40,7 @@ WINRATE_CHANNEL_ID = int(os.environ.get("WINRATE_CHANNEL_ID", "0"))
 # Bump this when a new balance patch ships. Stats fold older patches into the
 # current one via a fixed-size prior (see STAT_PRIOR): each patch's effective
 # winrate becomes a STAT_PRIOR-game prior for the next patch.
-VERSION = (4, 5, 0)
+VERSION = (4, 5, 1)
 STAT_PRIOR = 10  # virtual games the previous patch contributes to the next one
 
 # --- ELO -------------------------------------------------------------------
@@ -106,19 +106,27 @@ def faction_emoji(faction_class: str) -> str:
 
 # Ultimate options — same for all factions.
 # "None" is first so players can report a game where no ultimate was reached.
+# Maps DB-stored name -> display name.
+# Add an entry when an ultimate is renamed so old games still appear under the new name.
+ULTIMATE_ALIASES = {
+    "Runic Excelence": "Cloak and Dagger",
+}
+# Reverse: display name -> DB-stored name (for writing new matches).
+ULTIMATE_DB_NAME = {v: k for k, v in ULTIMATE_ALIASES.items()}
+
 ULTIMATES = [
     "Master of Creation",
     "Master of Death",
     "Master of Destruction",
     "Master of Life",
+    "Master of War",
     "Angelic Alliance",
     "Blood Thirst",
     "Forest Rage",
     "Forgotten Witchcraft",
     "Frax Essence",
-    "Mithral Plating",
     "Undying Thirst",
-    "Runic Excelence",
+    "Cloak and Dagger",
     "Runic Protection",
     "Nature's Luck",
     "Absolute Empathy",

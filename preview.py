@@ -65,11 +65,11 @@ MOCK_ULTIMATES = [
     for u, w, l in [
         ("Master of Creation", 14, 6), ("Angelic Alliance", 11, 9),
         ("Blood Frenzy", 9, 11),       ("Forest Rage", 13, 7),
-        ("Howl of Terror", 8, 12),     ("Mithral Plating", 10, 5),
+        ("Howl of Terror", 8, 12),     ("Master of War", 10, 5),
         ("Arcane Omniscience", 7, 8),  ("Undying Thirst", 12, 8),
         ("Nature's Luck", 5, 10),      ("Absolute Empathy", 9, 6),
         ("Master of Death", 6, 9),     ("Runic Protection", 11, 4),
-        ("Runic Excelence", 7, 7),     ("Might over Magic", 10, 10),
+        ("Cloak and Dagger", 7, 7),    ("Might over Magic", 10, 10),
         ("Forgotten Witchcraft", 8, 7),("Frax Essence", 4, 11),
         ("Master of Destruction", 6, 8),("Master of Life", 9, 5),
         ("Blood Thirst", 3, 12),
