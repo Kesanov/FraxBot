@@ -41,7 +41,7 @@ WINRATE_CHANNEL_ID = int(os.environ.get("WINRATE_CHANNEL_ID", "0"))
 # current one via a fixed-size prior (see STAT_PRIOR): each patch's effective
 # winrate becomes a STAT_PRIOR-game prior for the next patch.
 VERSION = (4, 5, 1)
-STAT_PRIOR = 10  # virtual games the previous patch contributes to the next one
+STAT_PRIOR = 50  # virtual games the previous patch contributes to the next one
 
 # --- ELO -------------------------------------------------------------------
 ELO_START = 1000
