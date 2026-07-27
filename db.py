@@ -4,7 +4,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 
-from config import DB_PATH, ELO_START, FACTIONS, CLASSES, ULTIMATES, VERSION, STAT_PRIOR, ULTIMATE_DB_NAME
+from config import DB_PATH, ELO_START, FACTIONS, CLASSES, ULTIMATES, VERSION, STAT_PRIOR, ULTIMATE_DB_NAME, ULTIMATE_ALIASES
 import elo
 
 # Serialize match recording so ELO updates always read current database state
@@ -326,6 +326,12 @@ def player_breakdown(user_id):
     factions = [_entry("faction", f, *fac.get(f, (0, 0))) for f in FACTIONS]
 
     ult = _tally("ultimate")
+    # Merge aliased DB names (e.g. "Runic Excelence") into their display name.
+    for db_name, display_name in ULTIMATE_ALIASES.items():
+        if db_name in ult:
+            rec = ult.setdefault(display_name, [0, 0])
+            rec[0] += ult[db_name][0]
+            rec[1] += ult[db_name][1]
     ultimates = [_entry("ultimate", u, *ult.get(u, (0, 0))) for u in ULTIMATES]
     ultimates.sort(key=lambda r: r["games"], reverse=True)
 
